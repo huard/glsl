@@ -136,27 +136,72 @@ def annual_min_qom_ts(ra):
     
     return ts_min
 
+def get_station_meta(sid):
+    """Get the meta data for the station."""
+    fields = get_fields('stations')
+    
+    with sqlite3.connect('../data/Hydat_20140113.db') as conn:
+        cur = conn.cursor()
+            
+        CMD = "SELECT * FROM stations WHERE STATION_NUMBER = ?"
+        rows = cur.execute(CMD, (sid,))
+        for row in rows:
+            return dict(zip(fields, row))
 
-def get_station(sid, var='Q'):
+def query(table, field, value):
+    """General purpose query."""
+    with sqlite3.connect('../data/Hydat_20140113.db') as conn:
+        cur = conn.cursor()
+        CMD = "SELECT * FROM {0} WHERE {1} = ?".format(table, field)
+        rows = cur.execute(CMD, (value,))
+        return list(rows)
+        
+
+def get_fields(table):
+    """Return the column names."""
+    with sqlite3.connect('../data/Hydat_20140113.db') as conn:
+        cur = conn.cursor()
+            
+        rows = cur.execute("PRAGMA table_info({0})".format(table))
+        fields = [row[1] for row in rows]
+        return fields
+            
+            
+def get_dly(sid, var='Q'):
+    """Return the daily flows or levels at the station.
+    
+    Parameters
+    ----------
+    sid : str
+      Station id
+    var : Q or H
+      Flows or levels.
+    """
+    
     with sqlite3.connect('../data/Hydat_20140113.db') as conn:
         cur = conn.cursor()
         
-        # Check if its a flow (Q) or level (H) station.
-        #CMD = "SELECT * FROM stn_data_collection WHERE STATION_NUMBER=?"
-        #for row in cur.execute(CMD, (sid,)):
-        #    typ = row[0]
-        #    print (row)
-    
         series = []
         if var == 'Q':
-            CMD = "SELECT * FROM dly_flows WHERE STATION_NUMBER = ?"
-            for row in cur.execute(CMD, (sid,)):
-                #print(row)
-                station_number, year, month, full_month, no_days, monthly_mean, monthly_total = row[:7]
-                x = row[11::2]
-                dates = pd.date_range('{0}-{1}-01'.format(year, month), periods=no_days, freq='D')
-                series.append( pd.Series(x[:no_days], dates) ) 
-                
+            table = "dly_flows"
+            i = 11
+        elif var == 'H':
+            table = "dly_levels"
+            i = 12
+        else:
+            raise ValueError("Variable not recognized")
+    
+        fields = get_fields(table)
+            
+        CMD = "SELECT * FROM {0} WHERE STATION_NUMBER = ?".format(table)
+        
+        for row in cur.execute(CMD, (sid,)):
+            meta = dict(zip(fields[:7], row[:7]))
+            
+            x = row[i::2]
+            dates = pd.date_range('{0}-{1}-01'.format(meta['YEAR'], meta['MONTH']), periods=meta['NO_DAYS'], freq='D')
+            series.append( pd.TimeSeries(x[:meta['NO_DAYS']], dates) ) 
+                            
         return pd.concat(series).sort_index()
             
     
