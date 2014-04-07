@@ -41,6 +41,10 @@ import datetime as dt
 import pandas as pd
 import sqlite3
 
+HYDAT = '../data/Hydat_20140113.db'
+ECSCEN = '../data/HYDRO_DATA_20140403.sqlite'
+
+
 def EC_H20(filename):
     import codecs
     from matplotlib.dates import strpdate2num, num2date
@@ -49,7 +53,48 @@ def EC_H20(filename):
     convert = lambda x: num2date(strpdate2num('%Y/%m/%d')(x.decode()))
     return np.loadtxt(f, dtype={'names':('date', 'level'), 'formats':('datetime64[D]', 'f8')}, skiprows=8, delimiter=',', usecols=[0,1], converters={0:convert, 1:float})
 
-
+def Q_Sorel(freq='qt'):
+    """
+    Débit reconstitué à Sorel par EC selon la méthode Bouchard et Morin
+    (2000). 
+    
+    Parameters
+    ----------
+    freq : {qtm, week}
+      Frequency, either quarter of month or weekly.
+    
+    Returns
+    -------
+    out : Series
+      Series of flow at Sorel. 
+      
+    Notes
+    -----
+    The weeks seem to be starting on Jan 1st, not on a Sunday. 
+    """
+    import xlrd
+    
+    with xlrd.open_workbook('../data/Q-Sorel.xlsx') as wb:
+        
+        if freq == 'qtm':
+            ws = wb.sheet_by_name('Q-Sorel-AvgQtMois')
+        elif freq=='week':
+            ws = wb.sheet_by_name('Q-Sorel-AvgHebdo')
+        else:
+            raise ValueError("Option {0} not recognized.".format(freq))
+            
+        Y = np.array(ws.col_values(0)[1:], int)
+        W = np.array(ws.col_values(1)[1:], int)
+        V = ws.col_values(2)[1:]
+        
+        # Check that the record is continuous
+        #assert set(np.diff(Y)) == set([0,1])
+        #assert np.all(np.nonzero(np.diff(W) < 0)[0] == np.nonzero(np.diff(Y)==1)[0])
+        
+        mi = pd.MultiIndex.from_arrays([Y,W], names=('Year', 'QTM' if freq=='qtm' else 'Week'))
+        return pd.Series(V, mi)
+    
+    
 def quartermonth_bounds(leap=False):
     if leap:
         mdays = np.cumsum([0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31])
@@ -139,27 +184,22 @@ def annual_min_qom_ts(ra):
 def get_station_meta(sid):
     """Get the meta data for the station."""
     fields = get_fields('stations')
-    
-    with sqlite3.connect('../data/Hydat_20140113.db') as conn:
-        cur = conn.cursor()
-            
-        CMD = "SELECT * FROM stations WHERE STATION_NUMBER = ?"
-        rows = cur.execute(CMD, (sid,))
-        for row in rows:
-            return dict(zip(fields, row))
+    values = query('stations', 'STATION_NUMBER', sid)
+    for row in values:
+        return dict(zip(fields, row))
 
-def query(table, field, value):
+def query(table, field, value, path=HYDAT):
     """General purpose query."""
-    with sqlite3.connect('../data/Hydat_20140113.db') as conn:
+    with sqlite3.connect(path) as conn:
         cur = conn.cursor()
         CMD = "SELECT * FROM {0} WHERE {1} = ?".format(table, field)
         rows = cur.execute(CMD, (value,))
         return list(rows)
         
 
-def get_fields(table):
+def get_fields(table, path=HYDAT):
     """Return the column names."""
-    with sqlite3.connect('../data/Hydat_20140113.db') as conn:
+    with sqlite3.connect(path) as conn:
         cur = conn.cursor()
             
         rows = cur.execute("PRAGMA table_info({0})".format(table))
@@ -178,7 +218,7 @@ def get_dly(sid, var='Q'):
       Flows or levels.
     """
     
-    with sqlite3.connect('../data/Hydat_20140113.db') as conn:
+    with sqlite3.connect(HYDAT) as conn:
         cur = conn.cursor()
         
         series = []
@@ -204,5 +244,67 @@ def get_dly(sid, var='Q'):
                             
         return pd.concat(series).sort_index()
             
+    
+def get_scen(no, reg='mtl_lano'):
+    """Return the coordinates and values for a given scenario.
+    
+    Parameters
+    ----------
+    no : int
+      Scenario index (1-8)
+    reg : {mtl_lano, lsl, lsp}
+      Region code: Mtl-Lanaudiere, Lac St-Louis, Lac St-Pierre. None will
+      return points for all three regions.
+      
+    Return
+    ------
+    x, y, z, depth, velocity
+    """
+    regions = 'lsl', 'lsp', 'mtl_lano'
+    
+    if reg is None: 
+        reg = regions 
+    else:
+        assert reg in regions
+        reg = [reg]
+        
+    
+    with sqlite3.connect(ECSCEN) as conn:
+        cur = conn.cursor()
+        out = []
+        for r in reg:
+            CMD = "SELECT X, Y, Z, PROFONDEUR, MOD_VITESSE FROM data_{0} WHERE SCENARIO = ?"
+            out.extend(cur.execute(CMD.format(r), (str(no)+'P',)))
+            
+    return np.array(out).T
+
+def MTM8():
+    """Convert Modified Transverse Mercatorimport Zone 8 coordinates to lat-lon.
+    
+    # NAD83 / MTM zone 8 Québec
+    <42104> +proj=tmerc +lat_0=0 +lon_0=-73.5 +k=0.999900 +x_0=304800 +y_0=0 +ellps=GRS80 +units=m +no_defs  no_defs <>
+    """
+    from mpl_toolkits.basemap import pyproj
+    return pyproj.Proj("+proj=tmerc +lat_0=0 +lon_0=-73.5 +k=0.999900 +x_0=304800 +y_0=0 +ellps=GRS80 +units=m +no_defs")
+    
+la_prairie = -73.500732, 45.417809
+ile_perrot =  -73.947432, 45.399887
+
+def level(lon, lat, scen, reg=None):
+    from scipy.interpolate import LinearNDInterpolator
+    
+    # Find native coordinates
+    x, y = MTM8()(lon, lat)
+        
+    # Get scenario data
+    X, Y, Z, D, V = get_scen(scen, reg)
+    
+    # Create triangulation
+    I = LinearNDInterpolator(list(zip(X, Y)), list(zip(Z, D)))
+    return I((x,y))
+    
+    
+    
+    
     
     
