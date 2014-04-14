@@ -53,7 +53,7 @@ def EC_H20(filename):
     convert = lambda x: num2date(strpdate2num('%Y/%m/%d')(x.decode()))
     return np.loadtxt(f, dtype={'names':('date', 'level'), 'formats':('datetime64[D]', 'f8')}, skiprows=8, delimiter=',', usecols=[0,1], converters={0:convert, 1:float})
 
-def Q_Sorel(freq='qt'):
+def Q_Sorel(freq='qtm'):
     """
     Débit reconstitué à Sorel par EC selon la méthode Bouchard et Morin
     (2000). 
@@ -95,17 +95,28 @@ def Q_Sorel(freq='qt'):
         return pd.Series(V, mi)
     
     
-def quartermonth_bounds(leap=False):
-    if leap:
-        mdays = np.cumsum([0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31])
-    else:
-        mdays = np.cumsum([0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31])
+def _quartermonth_bounds(leap=False):
+    """Returns the bounds for the quarter month day of the year. 
     
-    qom = []
-    for i in range(12):
-        qom.extend(np.around(np.linspace(mdays[i], mdays[i+1], 4, False)).tolist())
-        
-    return np.array(qom, int)
+    Notes
+    -----
+    Rules taken from Fan & Fay (2002). 
+    """
+    if leap:
+        mdays = [0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    else:
+        mdays = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    
+    limits = {28: [1, 8, 15, 22],
+              30: [1,9,16,24],}
+    limits[29] = limits[28]
+    limits[31] = limits[30]
+    
+    qom = [0]
+    for i in range(1,13):
+        qom.extend((np.array(limits[mdays[i]]) + np.sum(mdays[:i])).tolist())
+    
+    return np.array(qom[1:], int)
      
 def quartermonth_index(dti):
     """Return the year and quarter month index.
@@ -119,8 +130,8 @@ def quartermonth_index(dti):
         
     leap = [calendar.isleap(y) for y in dti.year]
     
-    i = quartermonth_bounds(False)
-    li = quartermonth_bounds(True)
+    i = _quartermonth_bounds(False)
+    li = _quartermonth_bounds(True)
     
     qom = np.digitize(dti.dayofyear, i)
     qom[leap] = np.digitize(dti.dayofyear[leap], li)
@@ -192,7 +203,7 @@ def query(table, field, value, path=HYDAT):
     """General purpose query."""
     with sqlite3.connect(path) as conn:
         cur = conn.cursor()
-        CMD = "SELECT * FROM {0} WHERE {1} = ?".format(table, field)
+        CMD = "SELECT * FROM {0} WHERE {1} LIKE ?".format(table, field)
         rows = cur.execute(CMD, (value,))
         return list(rows)
         
@@ -240,12 +251,12 @@ def get_dly(sid, var='Q'):
             
             x = row[i::2]
             dates = pd.date_range('{0}-{1}-01'.format(meta['YEAR'], meta['MONTH']), periods=meta['NO_DAYS'], freq='D')
-            series.append( pd.TimeSeries(x[:meta['NO_DAYS']], dates) ) 
+            series.append( pd.TimeSeries(x[:meta['NO_DAYS']], dates)) 
                             
-        return pd.concat(series).sort_index()
+        return pd.concat(series).sort_index()#.resample('D')
             
     
-def get_scen(no, reg='mtl_lano'):
+def get_scen(no, reg='mtl_lano', variables=None):
     """Return the coordinates and values for a given scenario.
     
     Parameters
@@ -268,13 +279,17 @@ def get_scen(no, reg='mtl_lano'):
         assert reg in regions
         reg = [reg]
         
-    
+    if variables is None:
+        variables = 'X, Y, Z, PROFONDEUR, MOD_VITESSE'
+    else:
+        variables = ', '.join(variables)
+        
     with sqlite3.connect(ECSCEN) as conn:
         cur = conn.cursor()
         out = []
         for r in reg:
-            CMD = "SELECT X, Y, Z, PROFONDEUR, MOD_VITESSE FROM data_{0} WHERE SCENARIO = ?"
-            out.extend(cur.execute(CMD.format(r), (str(no)+'P',)))
+            CMD = "SELECT {0} FROM data_{1} WHERE SCENARIO = ?"
+            out.extend(cur.execute(CMD.format(variables, r), (str(no)+'P',)))
             
     return np.array(out).T
 
