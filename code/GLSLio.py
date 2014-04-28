@@ -384,6 +384,13 @@ def FF_flow(site, scen='bc'):
     fn = os.path.join(DIR, '{0}{1}.{2}'.format(site, addon, scen))
     return _loadFF(fn)
     
+def FF_K(site, scen='bc'):
+    """Return the roughness factor K."""
+    DIR = '../data/FF/Input_CC'
+    fn = os.path.join(DIR, '{0}.{1}'.format(site, scen))
+    return _loadFF(fn)
+    
+    
 def FF_tidal(scen='bc'):
     DIR = '../data/FF/Input_CC'
     fn = os.path.join(DIR, 'tidal.{0}'.format(scen))

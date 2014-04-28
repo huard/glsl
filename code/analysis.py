@@ -21,10 +21,10 @@ EC_scen_Q = {'Sorel':[5000, 6500, 8000, 9500, 12000, 14500, 17500, 20500],
             }
 
 # Niveaux printemps IGLD85         
-EC_scen_L = {'jetee': [4.29, 4.95, 5.61, 6.30, 7.19, 7.99, 8.8, 9.82],
-             'varennes':[3.48, 4.2, 4.95, 5.57, 6.37, 7.2, 7.98, 9.06], 
-             'sorel': [2.96, 3.56, 4.17, 4.74, 5.42, 6.22, 6.92, 8.01], 
-             'tr': [2.52, 2.95, 3.55, 4.06, 4.69, 5.53, 6.16, 7.24]}
+EC_scen_L = {'mtl': [4.29, 4.95, 5.61, 6.30, 7.19, 7.99, 8.8, 9.82],
+             'var':[3.48, 4.2, 4.95, 5.57, 6.37, 7.2, 7.98, 9.06], 
+             'srl': [2.96, 3.56, 4.17, 4.74, 5.42, 6.22, 6.92, 8.01], 
+             'trois': [2.52, 2.95, 3.55, 4.06, 4.69, 5.53, 6.16, 7.24]}
 
 # Temps de retour
 EC_scen_T = [10000, 70, 3, None, None, 2, 16, 7000]
@@ -53,11 +53,11 @@ def FanFay(site,):
     low level biases, but neglecting (for now) the QTM residuals and 
     the tidal component T. 
     """
-    regcoefs = {'jetee':[(.001757, .000684, 0, 0.001161, 0.000483), 0.6587, 0.9392],
-                'varennes':[(0.001438, 0.001377, 0, 0.001442, 0.000698), 0.6373, 1.0578],
-                'sorel':[(0.001075, 0.001126, 0, 0.001854, 0.000882), 0.6331, 1.277],
+    regcoefs = {'mtl':[(.001757, .000684, 0, 0.001161, 0.000483), 0.6587, 0.9392],
+                'var':[(0.001438, 0.001377, 0, 0.001442, 0.000698), 0.6373, 1.0578],
+                'srl':[(0.001075, 0.001126, 0, 0.001854, 0.000882), 0.6331, 1.277],
                 'lsp':[(0.000807, 0.001199, 0, 0.001954, 0.000976), 0.6259, 1.4722],
-                'tr':[(.000584, .00069, .000957, .001197, .000787), .7042, 1.5895],
+                'trois':[(.000584, .00069, .000957, .001197, .000787), .7042, 1.5895],
                 #'tr':[(.000589, .000727, .00102, .001158, .000815), 0.6981, 1.5919],
                 }
     """
@@ -70,17 +70,26 @@ def FanFay(site,):
     c, h, t = regcoefs[site.lower()]
     
     def func(Q, tidal):
-        return np.dot(c, Q)**h + t * tidal
+        """Return level computed from tributaries' flow and tidal component. 
+        Note that the roughness factor accounting for ice effects is 
+        expected to be included in the flow Q.
+        """
+        a = np.dot(c, Q)**h
+        t1 = pd.Series(data=a, index=Q.axes[1])
+        return t1 + t * tidal 
     return func
     
 def FanFayLevel(site, scen='bc'):
     """Compute the level from flows."""
     qs = 'stl', 'dpmi', 'rich', 'fran', 'mau'
     Q = pd.DataFrame([GLSLio.FF_flow(q, scen) for q in qs])
+    
+    K = GLSLio.FF_K(site)
+    
     T = GLSLio.FF_tidal()
     
     f = FanFay(site)
-    return f(Q, T)
+    return f(K*Q, T)
     
     
 def inferStMaurice(scen):
