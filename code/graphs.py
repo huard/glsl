@@ -45,9 +45,8 @@ def plot_Mtl_annual_minimum_qom_levels():
     
 def plot_Sorel_annual_minimum_qom_levels():
     ra = GLSLio.EC_H20('../data/Niveaux St-Laurent/15930-1-JAN-1916_slev.csv')
-    
     ts_min = GLSLio.annual_min_qom_ts(ra)
-    
+       
     # Graph
     fig, ax = plt.subplots(1, 1, figsize=(10, 4))
     fig.subplots_adjust(bottom=.1, right=.95, left=.1)
@@ -66,6 +65,57 @@ def plot_Sorel_annual_minimum_qom_levels():
         ax.annotate(str(y), (y, ts_min[y]+dy*.02), (y, ts_min[y]+dy*.8), ha='center', size='small', arrowprops=dict(arrowstyle='-', fc='w', ec='k'), color='k')
 
     ax.text(1961, 0, 'Zéro des cartes', size=8, ha='left', )
+
+
+def plot_Sorel_annual_minimum_qom_levels_flows():
+    
+    
+    # Load levels
+    ra = GLSLio.EC_H20('../data/Niveaux St-Laurent/15930-1-JAN-1916_slev.csv')
+    level_min = GLSLio.annual_min_qom_ts(ra)
+    
+    # Load streamflow
+    ts = GLSLio.Q_Sorel('qtm')
+    q_min = ts.groupby(level=0).min()
+    
+    # Graph
+    fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+    fig.subplots_adjust(bottom=.07, right=.95, left=.1, hspace=.03)
+    trans = [mpl.transforms.blended_transform_factory(ax.transData, ax.transAxes) for ax in axes]
+    
+    level_min.plot(ax=axes[1], color=c, lw=1.5)
+    level_min.plot(style='o', ax=axes[1], ms=5, mec=c, mfc='w', mew=1)
+    
+    q_min.plot(ax=axes[0], color=c, lw=1.5)
+    q_min.plot(style='o', ax=axes[0], ms=5, mec=c, mfc='w', mew=1)
+    
+    axes[0].set_ylabel("Débit [m³/s]")
+    axes[1].set_ylabel("Niveau d'eau [m]")
+    axes[0].set_xlabel('')
+    axes[1].set_xlabel("Année")
+    axes[0].text(1, 1, "Minima annuels - Sorel", ha='right', va='bottom', size=24, color='#0A0C3D', weight='bold', alpha=.8, transform=axes[0].transAxes)
+    
+    for ax in axes:
+        ax.grid(ls='-', lw=.1, color='#777777')
+        ax.grid(axis='x')
+    
+    axes[1].set_xlim(right=2015)
+    
+    for y in [2001, 2007, 2012]:
+        axes[1].annotate(str(y), (y, level_min[y]), (y, .9), 
+            ha='center', size=11, 
+            textcoords=trans[1],
+            arrowprops=dict(arrowstyle='-', fc='w', ec='k', shrinkB=5,), color='k')
+
+    axes[1].text(1932, 0, 'Zéro des cartes', size=10, ha='left', )
+
+    bbox_props = dict(boxstyle="rarrow,pad=0.3", fc="k", ec="k", lw=2)
+    t = axes[0].text(1961, .05, "Régularisation des débits  ", ha="left", va="bottom", 
+            size=12, weight='bold', color='white', transform=trans[0],
+            bbox=bbox_props)
+
+    plt.savefig('../figs/Sorel_q_l_min.png')
+    plt.savefig('../figs/Sorel_q_l_min.svg')
 
 
 def plot_Sorel_frequential_analysis():
@@ -187,13 +237,13 @@ def plot_depth_map(scen):
     from scipy.spatial import Delaunay
     
     cm = mpl.cm.gist_ncar
-    cm.set_under('w')
+    #cm.set_under('w')
     
-    m = basemap.Basemap(projection='tmerc', resolution='h', lat_0=45.8, lon_0=-73.5, k_0=0.99990, ellps='GRS80', width=170000, height=170000)
+    m = basemap.Basemap(projection='tmerc', resolution='c', lat_0=45.8, lon_0=-73.5, k_0=0.99990, ellps='GRS80', width=170000, height=170000)
     proj = GLSLio.MTM8()
-    m.drawcoastlines()
+    #m.drawcoastlines()
     m.drawcountries()
-    m.drawrivers()
+    #m.drawrivers()
     
     for reg in 'lsl', 'lsp', 'mtl_lano':
         x, y, z, d, v = GLSLio.get_scen(scen, reg)
@@ -218,9 +268,12 @@ def plot_depth_map(scen):
         T.set_mask(ma)
         #print (np.sum(ma))
         
-        plt.tricontourf(T, d, 20, mask=ma, vmin=0, vmax=20, cmap=cm)
+        
+        #plt.tricontourf(T, d, 20, mask=ma, vmin=0, vmax=20, cmap=cm)
+        plt.tripcolor(T, d, vmin=0, vmax=20, cmap=cm)
     
-    plt.colorbar()
+    cb = plt.colorbar()
+    cb.set_label('Profondeur [m]')
     
     
     

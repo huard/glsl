@@ -40,6 +40,7 @@ import numpy as np
 import datetime as dt
 import pandas as pd
 import sqlite3
+import os
 
 HYDAT = '../data/Hydat_20140113.db'
 ECSCEN = '../data/HYDRO_DATA_20140403.sqlite'
@@ -319,7 +320,93 @@ def level(lon, lat, scen, reg=None):
     return I((x,y))
     
     
+def _loadFF(fn):
+    """
+    Read the Fortran formatted file from Fan & Fay. 
+    """
+    x = np.loadtxt(fn, skiprows=6)        
+    # Create series
+    Y = x[:,:1].repeat(12, axis=1).ravel()
+    W = np.arange(len(Y))%48 + 1
+    V = x[:,2:].ravel()
     
+    mi = pd.MultiIndex.from_arrays([Y,W], names=('Year', 'QTM'))
+    ts = pd.Series(V, mi)
     
+    with open(fn) as f:
+        line = f.readline()[1:]
+        i = line.lower().find('quarter')
+        
+        ts.name = line[:i-1]
+
+    return ts
+
+def FF_flow(site, scen='bc'):
+    """Return the flow at the given site provided by Fan & Fay.
     
+    Parameters
+    ----------
+    site : {lsl, rich, fran, mau, dpmi, stl, ont}
+      River or site name. 
+    scen : {bc, ww, wd}
+      Climate scenarios: base case, warm & wet, warm & dry. 
+      
+    Notes
+    -----
+    * stl: Lac St-Louis
+    * rich: Richelieu
+    * fran: St-Francois
+    * mau: St-Maurice
+    * dpmi: Des Prairies Milles Iles
+    * stl: Lac St-Louis
+    * ont: Lake Ontario
+    """
     
+    tributaries = 'mau', 'fran', 'rich'
+    
+    if site in tributaries:
+        DIR = '../data/FF/Input_CC'
+        addon = ''
+    else:
+        DIR = '../data/FF/Plan58DD_CC'
+        if site in ['dpmi', 'stl']:
+            addon = '_Plan58DD_CC'
+        elif site == 'ont':
+            addon = '_Feb06'
+        
+        if site in ['stl', 'ont']:
+            site = 'Q' + site
+        
+        elif site == 'dpmi':
+            site = site+'qmq'
+            
+        
+    fn = os.path.join(DIR, '{0}{1}.{2}'.format(site, addon, scen))
+    return _loadFF(fn)
+    
+def FF_tidal(scen='bc'):
+    DIR = '../data/FF/Input_CC'
+    fn = os.path.join(DIR, 'tidal.{0}'.format(scen))
+    return _loadFF(fn)
+    
+def FF_level(site, scen='bc'):
+    """Return the water level at the given site provided by Fan & Fay.
+    
+    Paramters
+    ---------
+    site : {mtl, ont, pcl}
+      Site names: Montreal Jetty #1, Lake Ontario, Pointe Claire.
+    
+    scen : {bc, ww, wd}
+      Climate scenarios: base case, warm & wet, warm & dry. 
+    """
+    DIR = '../data/FF/Plan58DD_CC'
+    if site == 'ont':
+        name = 'Level_Feb06'
+    elif site == 'mtl':
+        name = 'mtl_level_Plan58DD_CC'
+    elif site == 'pcl':
+        name = 'pcl_level_Plan58DD_CC'
+        
+    fn = os.path.join(DIR, '{0}.{1}'.format(name, scen))
+    return _loadFF(fn)

@@ -53,11 +53,12 @@ def FanFay(site,):
     low level biases, but neglecting (for now) the QTM residuals and 
     the tidal component T. 
     """
-    regcoefs = {'jetee':[(.001757, .000684, 0, 0.001161, 0.000483), 0.6587],
-                'varennes':[(0.001438, 0.001377, 0, 0.001442, 0.000698), 0.6373],
-                'sorel':[(0.001075, 0.001126, 0, 0.001854, 0.000882), 0.6331],
-                'lsp':[(0.000807, 0.001199, 0, 0.001954, 0.000976), 0.6259],
-                'tr':[(.000589, .000727, .00102, .001158, .000815), 0.6981],
+    regcoefs = {'jetee':[(.001757, .000684, 0, 0.001161, 0.000483), 0.6587, 0.9392],
+                'varennes':[(0.001438, 0.001377, 0, 0.001442, 0.000698), 0.6373, 1.0578],
+                'sorel':[(0.001075, 0.001126, 0, 0.001854, 0.000882), 0.6331, 1.277],
+                'lsp':[(0.000807, 0.001199, 0, 0.001954, 0.000976), 0.6259, 1.4722],
+                'tr':[(.000584, .00069, .000957, .001197, .000787), .7042, 1.5895],
+                #'tr':[(.000589, .000727, .00102, .001158, .000815), 0.6981, 1.5919],
                 }
     """
     regcoefs = {'jetee': [(.001777, .000626, 0, .001173, .000532), .6575],
@@ -66,11 +67,21 @@ def FanFay(site,):
                 'lsp': [], 
                 'tr': [(.000612, .000816, .001169, .001223, .0008666), .68], }
     """
-    c, h = regcoefs[site.lower()]
+    c, h, t = regcoefs[site.lower()]
     
-    def func(Q):
-        return np.dot(c, Q)**h
+    def func(Q, tidal):
+        return np.dot(c, Q)**h + t * tidal
     return func
+    
+def FanFayLevel(site, scen='bc'):
+    """Compute the level from flows."""
+    qs = 'stl', 'dpmi', 'rich', 'fran', 'mau'
+    Q = pd.DataFrame([GLSLio.FF_flow(q, scen) for q in qs])
+    T = GLSLio.FF_tidal()
+    
+    f = FanFay(site)
+    return f(Q, T)
+    
     
 def inferStMaurice(scen):
     """Find the St-Maurice streamflow making the level computed from the 
