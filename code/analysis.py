@@ -9,6 +9,7 @@ reload(GLSLio)
 
 gev = scipy.stats.genextreme
 
+"""Variables tirées du rapport de Bouchard et Morin."""
 # Débits des scénarios à Sorel
 EC_scen_Q = {'Sorel':[5000, 6500, 8000, 9500, 12000, 14500, 17500, 20500],
              'LaSalle':[4572, 5740, 6997, 8304, 10102, 11396, 13174, 14531],
@@ -28,11 +29,33 @@ EC_scen_L = {'mtl': [4.29, 4.95, 5.61, 6.30, 7.19, 7.99, 8.8, 9.82],
 
 # Temps de retour
 EC_scen_T = [10000, 70, 3, None, None, 2, 16, 7000]
+""" --- """
 
 
-def FanFay(site,):
+# Points de contrôle (F&F) - Positions des stations de niveau d'EC
+CP = dict(sites = ('mtl', 'var', 'srl', 'lsp', 'trois'),
+          coords = ((-73.5525, 45.5035), (-73.443667, 45.684333), (-73.115667, 46.047167), (-72.8955, 46.194833), (-72.539167, 46.3405 )))
+
+
+
+def stage_discharge_ff(site,):
     """Return the equation from Fan & Fay (2002) relating stage to 
-    discharge at locations on the St. Lawrence:
+    discharge at locations on the St. Lawrence.
+    
+    Parameters
+    ----------
+    site : {'mtl', 'var', 'srl', 'lsl', trois'}
+      Name of control point.
+    
+    Returns
+    -------
+    func : function
+      Function computing level from flow series
+      
+    Notes
+    -----
+    
+    Control points:
      * Jetée #1 (15520) (02OA046) 
      * Varennes (155660) (02OA050) 45.684º N, 73.443º W 
      * Sorel (15930) (02OJ022)  46.047º N, 73.115º W 
@@ -46,12 +69,6 @@ def FanFay(site,):
      * St-François (02OF019)
      * St-Maurice (02NG005)
      
-     
-    Notes
-    -----
-    Using the coefficients for the weighted series to compensate for 
-    low level biases, but neglecting (for now) the QTM residuals and 
-    the tidal component T. 
     """
     regcoefs = {'mtl':[(.001757, .000684, 0, 0.001161, 0.000483), 0.6587, 0.9392],
                 'var':[(0.001438, 0.001377, 0, 0.001442, 0.000698), 0.6373, 1.0578],
@@ -60,13 +77,7 @@ def FanFay(site,):
                 'trois':[(.000584, .00069, .000957, .001197, .000787), .7042, 1.5895],
                 #'tr':[(.000589, .000727, .00102, .001158, .000815), 0.6981, 1.5919],
                 }
-    """
-    regcoefs = {'jetee': [(.001777, .000626, 0, .001173, .000532), .6575],
-                'varennes': [], 
-                'sorel': [],
-                'lsp': [], 
-                'tr': [(.000612, .000816, .001169, .001223, .0008666), .68], }
-    """
+
     c, h, t = regcoefs[site.lower()]
     
     def func(Q, tidal):
@@ -79,7 +90,7 @@ def FanFay(site,):
         return t1 + t * tidal 
     return func
     
-def FanFayLevel(site, scen='bc'):
+def get_levels_ff(site, scen='bc'):
     """Compute the level from flows."""
     qs = 'stl', 'dpmi', 'rich', 'fran', 'mau'
     Q = pd.DataFrame([GLSLio.FF_flow(q, scen) for q in qs])
@@ -88,73 +99,271 @@ def FanFayLevel(site, scen='bc'):
     
     T = GLSLio.FF_tidal()
     
-    f = FanFay(site)
+    f = stage_discharge_ff(site)
     return f(K*Q, T)
     
+def get_flow_sorel(scen='bc'):
+    """Sum the flow from tributaries to get the flow at Sorel from the 
+    F&F flows."""
+    qs = 'stl', 'dpmi', 'chat', # Is there something else, do we need to scale those ?
+    Q = [GLSLio.FF_flow(q, scen) for q in qs]
+    return sum(Q)
     
-def inferStMaurice(scen):
-    """Find the St-Maurice streamflow making the level computed from the 
-    Fan & Fay relationship at Trois-Rivières equal to that from the EC
-    scenarios."""
-    from scipy import optimize
-    
-    # Level from EC scenarios
-    L = EC_scen_L['tr'][scen-1]
-    
-    # EC scenario streamflows
-    qs = 'LaSalle', 'MIP', 'Richelieu', 'St-Francois'
-    q = [EC_scen_Q[s][scen-1] for s in qs]
-    
-    # Fan & Fay relation at Trois-Rivières
-    f = FanFay('tr')
-    
-    # St-Maurice streamflow such that the Fan & Fay level equals the EC scenario level.
-    res = optimize.fmin(lambda x: np.abs(f(q+[x])-L), 695, disp=False)
-    return res[0]
-    
-    
-def FanFayInterpolation(lon, lat, scen):
-    qs = 'LaSalle', 'MIP', 'Richelieu', 'St-Francois'
 
-    # Get the streamflows
-    q = [EC_scen_Q[s][scen-1] for s in qs] + [inferStMaurice(scen)]
+def get_tesselation(domain):
+    """Return the model tesselation in native coordinates.
     
-    # Positions of the stations
-    coords = {'jetee': (-73.5525, 45.5035),
-              'varennes': (-73.443667, 45.684333),
-              'sorel': (-73.115667, 46.047167),
-              'lsp': (-72.8955, 46.194833),
-              'tr': (-72.539167, 46.3405 ),
-            }
+    Parameters
+    ----------
+    domain : {'lsl', 'lsp', 'mtl_lano'}
+      Domain name.
+      
+    """
+    from scipy.spatial import Delaunay
+    import matplotlib.tri as tri
     
+    # Get grid coordinates
+    x, y = GLSLio.get_scen(1, domain, ('X', 'Y'))
+        
+    # Convert coordinates into lat, long
+    # proj = GLSLio.MTM8()
+    # lon, lat = proj(x, y, inverse=True)
+        
+    # Construct Delaunay tesselation
+    # I use scipy's code since the current Matplotlib release delaunay implementation is fragile.
+    #D = Delaunay(np.array([x,y]).T)
+    T = tri.Triangulation(x, y)# D.vertices)
+    
+    #TODO:  Use circle-ratios instead
+    A = tri.TriAnalyzer(T)
+    ma = A.get_flat_tri_mask()
+    # Masked values
+    #area = triangle_area(x, y, D.vertices)
+    #dist = np.max(np.sqrt(np.diff(x[D.vertices], axis=1)**2 + np.diff(y[D.vertices])**2), axis=1)
+    #ma = (area > 1e6) | (dist > 1e3)
+    
+    T.set_mask(ma)
+    
+    return T
+    
+def _triangle_area(x,y,i):
+    """Return area of triangles formed by vertices (x[i], y[i]).
+    
+    Parameters
+    ----------
+    x,y: ndarray (n,)
+      xy coordinates
+    i : ndarray (n,3)
+      Indices of triangle vertices.
+    
+    Return
+    ------
+    out : ndarray (n,)
+      Triangle area.
+    """
+    n, d = np.asarray(i).shape
+    assert d == 3
+    
+    a = np.zeros(n)
+    for k in range(3):
+        a += x[i[:,k]] * (y[i[:,(k+1)%3]] - y[i[:,(k+2)%3]])
+    
+    return np.abs(a)
+
+def save_convex_hulls():
+    """For all three grids, save the convex hull in a json file."""
+    import json
+    from scipy.spatial import ConvexHull
+    qhull = {}
+    for dom in ['lsl', 'lsp', 'mtl_lano']:
+        x, y = GLSLio.get_scen(8, dom, ('X', 'Y'))
+        pts = np.array([x,y]).T 
+        qh = ConvexHull( pts )
+        qhull[dom] = pts[qh.vertices].tolist()
+        #T = get_tesselation(dom)
+        #qhull[dom] = np.array([T.x, T.y]).T[T.convex_hull].reshape(-1,2).tolist()
+        
+    
+    with open('../analysis/qhulls.json', 'w') as f:
+        json.dump(qhull, f)
+        
+    
+def get_domain(lon, lat):
+    """Return the domain holding the coordinates."""
+    import json
+    import matplotlib as mpl
+    
+    # Convert coordinates in native grid coordinates
     P = GLSLio.MTM8()
-    
     x, y = P(lon, lat)
     
-    dist = {}
-    for key, c in coords.items():
+    # Load convex_hulls
+    qhulls = json.load(open('../analysis/qhulls.json'))
+    
+    for key, poly in qhulls.items():
+        P = mpl.path.Path(poly)
+        if P.contains_point((x,y)):
+            return key
+    
+    raise ValueError("Point not in any domain")
+    
+    
+def interpolate_EC_levels(lon, lat):
+    """Return the eight levels interpolated from the grid data."""
+    from matplotlib import tri
+    # Native coordinates
+    P = GLSLio.MTM8()
+    x, y = P(lon, lat)
+    
+    # Domain identification
+    dom = get_domain(lon, lat)
+    
+    # Interpolate from grid
+    X, Y = GLSLio.get_scen(8, dom, variables=('X', 'Y'))
+    pts = np.array([X,Y]).T
+    
+    # Get bottom level
+    Z = GLSLio.get_scen(1, dom, variables=('Z',)).T
+    I = scipy.interpolate.LinearNDInterpolator(pts, Z)
+    z = I(x, y)[0]
+    
+    # Compute depth for each scenario
+    out = []
+    for scen in range(1,9):
+        D = GLSLio.get_scen(scen, dom, variables=('PROFONDEUR',)).T
+        I.values = D
+        out.append( I(x, y)[0] )
+    
+    # Add depth to bottom level
+    return np.array(out) + z
+        
+def save_control_points_EC_levels():
+    levels = []
+    for c in CP['coords']:
+        try:
+            levels.append( interpolate_EC_levels(*c) )
+        except:
+            levels.append(None)
+    return levels
+        
+def interpolate_ff_levels(lon, lat, scen='bc'):
+    """For a given point, compute the value interpolated from the Fan & 
+    Fay levels at the control points (Mtl, Sorel, Varennes and 
+    Trois-Rivieres) and improve the interpolation using the 2D model 
+    results. 
+    
+    Parameters
+    ----------
+    lon, lat : floats
+      Geographic coordinates of point of interest. 
+    scen : {'bc', 'wd', 'ww'}
+      Climate change scenario: base case, warm & dray, warm & wet. 
+      
+    Returns
+    -------
+    out : ndarray
+      Series of levels interpolated from Fan & Fay levels and corrected
+      using the 2D simulation from EC. 
+      
+    
+    Notes
+    -----
+    1. Interpolate linearly the Fan & Fay levels
+    1.1. Find the upstream and downstream control points
+    1.2 Compute the weights to apply to upstream and downstream levels
+    1.3 Compute the upstream and downstream levels from the F&F relations
+    1.4 Interpolate at the chosen location based on the distance to the control points
+    
+    2. Correct for non-linear levels
+    2.1 Compute the streamflow at Sorel
+    2.2 Identify the scenarios above and below the Sorel streamflow
+    2.3 Interpolate the scenario level at the point of interest
+    2.4 Get the levels at the upstream and downstream control points for all 8 scenarios and interpolate at the point of interest
+    2.5 Compute the difference between the linearly interpolated values between the control points and the interpolated 2D depth. 
+    2.6 Apply the difference to the Fan & Fay series interpolated at the point of interest
+    
+    """
+    # Model domain
+    dom = get_domain(lon, lat)
+    
+    # 1. Fan & Fay linear interpolation
+    # ---------------------------------
+    
+    # 1.1 Get the upstream and downstream stations from point
+    P = GLSLio.MTM8()
+    x, y = P(lon, lat)
+    
+    dist = []
+    for c in CP['coords']:
         xc, yc = P(*c)
-        dist[key] = np.hypot(x-xc, y-yc)
+        dist.append( np.hypot(x-xc, y-yc) )
         
-    i = np.argsort(dist.values())[:2]
-    locs = dist.keys()[i]
+    dist = np.array(dist)
+    si = np.argsort(dist)[:2]
     
-    h = {}
-    for l in locs:
-        h[l] = FanFay(l)(q)
-        
+    upstream = CP['sites'][si.min()]
+    downstream = CP['sites'][si.max()]
+    #print( upstream, downstream )
+    
+    # 1.2 Compute the weights to apply to upstream and downstream levels
+    Iw = dist[si.max()] / np.sum(dist[si])
+    
+    # 1.3 Compute the upstream and downstream levels from the F&F relations    
+    upL = get_levels_ff(upstream, scen)
+    dnL = get_levels_ff(downstream, scen)
+
+    # 1.4 Interpolate at the chosen location based on the distance to the control points
+    FF_L = Iw * upL + (1-Iw) * dnL
+    
+    # 2. Correct for non-linear levels
+    # --------------------------------
+    
+    # 2.1 Compute streamflow at Sorel
+    FS = get_flow_sorel(scen)
+    
+    # 2.2 Identify the scenarios above and below the Sorel streamflow 
+    refQ = EC_scen_Q['Sorel']
+    wi = np.interp(FS, refQ, range(1,9))
+    wi[FS.isnull().values] = 0
+    
+    # 2.3 Interpolate the scenario level at the point of interest
+    L = interpolate_EC_levels(lon, lat)
+    
+    # 2.4 Get the levels at the upstream and downstream control points for all 8 scenarios and interpolate at the point of interest
+    EC_L = Iw * np.array(EC_scen_L[upstream]) + (1-Iw) * np.array(EC_scen_L[downstream])
+    
+    # 2.5 Compute the difference between the linearly interpolated values between the control points and the interpolated 2D depth. 
+    deltas = EC_L - L
+    
+    # 2.6 Apply the difference to the Fan & Fay series interpolated at the point of interest
+    return FF_L + weight_EC_levels(deltas, wi)
     
     
     
+def weight_EC_levels(levels, wi):
+    """Interpolate within the 8 EC levels.
     
+    Parameters
+    ----------
+    site : {'mtl', 'var', 'srl', 'trois'}
+      Control point: Montréal, Varennes, Sorel and Trois-Rivières
+    wi : ndarray
+      Weighted index. For example, 3.7 means that EC scenario 3 has weight .3 and
+      scenario 4 has weight .7. 
+      
+    Returns
+    -------
+    out : ndarray
+      The levels at sites interpolated from the 8 EC levels according to wi. 
+    """
+    levels = np.asarray(levels)
+    w1 = (np.floor(wi) - 1).astype(int)
+    w = 1.-np.mod(wi,1)
+
+    out = levels[w1] * w + levels[w1+1]*(1-w)
+    out[w1<0] = np.nan
+    return out
     
-    
-#def DischargeforFanFay():
-#    q1 = GLSLio.get_dly("02OA016") + GLSLio.get_dly("02OA024")
-#    q2 = GLSLio.get_dly("02OA004") + GLSLio.get_dly("02OA003")
-#    q3 = GLSLio.get_dly("02OF019")
-#    q4 = GLSLio.get_dly("02NG005")   
-#    return q1, q2, q3, q4
     
 
 def frequential_analysis(ts):
@@ -187,40 +396,6 @@ def frequential_analysis(ts):
     
     return scipy.stats.pearson3(gamma, mu, sigma), am.dropna()
     
-    
-    
-    
-    params = scipy.stats.pearson3.fit(y, -.2)
-    P = scipy.stats.pearson3(*params)
-    return P
-    print (1/G.sf(5000))
-    
-    plt.hist(am.values, 20, normed=False)
-    x = np.linspace(am.min()-100, am.max()+100, 100)
-    y = np.log(x)
-    plt.plot(x, G.pdf(y), label='Gamma')
-    plt.plot(x, P.pdf(y), label='Pearson III')
-    plt.legend()
-    return P
-    
-def pearson_mom(x):
-    
-    m1 = np.mean(x)
-    m2 = np.var(x)
-    C = scipy.stats.skew(x)
-    
-    return scipy.stats.pearson3(scipy.stats.skew(x), loc=np.mean(x), scale=np.std(x))
-    
-    
-    #beta = (2/C)**2   # shape
-    #alpha = np.sqrt(m2/beta) # scale
-    #gamma = m1 - np.sqrt(m2*beta) # loc
-    
-    
-def logp_at_Lasalle():
-    """Frequency analysis of streamflow at LaSalle."""
-    scipy.stats
-    
 
     
 def Chateauguay_REC(validation=False):
@@ -245,10 +420,6 @@ def Chateauguay_REC(validation=False):
 def Yamaska_REC(validation=False):
      pass   
 
-    
-    
-    
-    
 def check():
     sites = ['jetee', 'varennes', 'sorel']
     qs = 'LaSalle', 'MIP', 'Richelieu', 'St-Francois'
@@ -261,7 +432,7 @@ def check():
         print (scen, end=' \t')
         q = [EC_scen_Q[s][scen-1] for s in qs] + [inferStMaurice(scen)]
         for site in sites:
-            l = FanFay(site)(q)
+            l = stage_discharge_ff(site)(q)
             print (np.around(l - EC_scen_L[site][scen-1],4), end=' \t')
         print('')
 

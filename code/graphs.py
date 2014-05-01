@@ -12,7 +12,7 @@ reload(analysis)
 mpl.rcParams['svg.fonttype'] = 'none'
 c = '#00425C'
 
-
+# see tricontour_smooth_delaunay.py
     
     
     
@@ -176,62 +176,9 @@ def plot_Sorel_frequential_analysis():
     plt.savefig('../figs/Sorel_frequential_analysis.svg')
     return ax
     
-def triangle_area(x,y,i):
-    """Return area of triangles formed by vertices (x[i], y[i]).
     
-    Parameters
-    ----------
-    x,y: ndarray (n,)
-      xy coordinates
-    i : ndarray (n,3)
-      Indices of triangle vertices.
-    
-    Return
-    ------
-    out : ndarray (n,)
-      Triangle area.
-    """
-    n, d = np.asarray(i).shape
-    assert d == 3
-    
-    a = np.zeros(n)
-    for k in range(3):
-        a += x[i[:,k]] * (y[i[:,(k+1)%3]] - y[i[:,(k+2)%3]])
-    
-    return np.abs(a)
-     
     
       
-def Tesselation(domain):
-    """Return the model tesselation in lat, lon coordinates.
-    
-    Parameters
-    ----------
-    domain : {'lsl', 'lsp', 'mtl_lano'}
-      Domain name.
-      
-    """
-    from scipy.spatial import Delaunay
-    # Get grid coordinates
-    x, y = GLSLio.get_scen(1, domain, ('X', 'Y'))
-        
-    # Convert coordinates into lat, long
-    # proj = GLSLio.MTM8()
-    # lon, lat = proj(x, y, inverse=True)
-        
-    # Construct Delaunay tesselation
-    # I use scipy's code since the current Matplotlib release delaunay implementation is fragile.
-    D = Delaunay(np.array([x,y]).T)
-    T = tri.Triangulation(x, y, D.vertices)
-    
-    # Masked values
-    area = triangle_area(x, y, D.vertices)
-    dist = np.max(np.sqrt(np.diff(x[D.vertices], axis=1)**2 + np.diff(y[D.vertices])**2), axis=1)
-    
-    ma = (area > 1e6) | (dist > 1e3)
-    T.set_mask(ma)
-    return T
-    
 
 def plot_depth_map(scen):
     from scipy.spatial import Delaunay
@@ -239,42 +186,38 @@ def plot_depth_map(scen):
     cm = mpl.cm.gist_ncar
     #cm.set_under('w')
     
-    m = basemap.Basemap(projection='tmerc', resolution='c', lat_0=45.8, lon_0=-73.5, k_0=0.99990, ellps='GRS80', width=170000, height=170000)
+    #m = basemap.Basemap(projection='tmerc', resolution='c', lat_0=45.8, lon_0=-73.5, k_0=0.99990, ellps='GRS80', width=170000, height=170000)
     proj = GLSLio.MTM8()
     #m.drawcoastlines()
-    m.drawcountries()
+    #m.drawcountries()
     #m.drawrivers()
+
+    # Plot control points
+    for key, c in zip(analysis.CP['sites'], analysis.CP['coords']):
+        x,y = proj(*c)
+        plt.plot([x,], [y,], 'o', mfc='w', mec='b', ms=10, label=key, zorder=1) 
+    
+    plt.legend()
+
     
     for reg in 'lsl', 'lsp', 'mtl_lano':
-        x, y, z, d, v = GLSLio.get_scen(scen, reg)
+        d = GLSLio.get_scen(scen, reg, variables=('PROFONDEUR',))[0]
         
         # Convert coordinates into lat, long
-        lon, lat = proj(x, y, inverse=True)
+        #lon, lat = proj(x, y, inverse=True)
         
         # Convert back into map projection
-        x, y  = m(lon, lat)
+        #x, y  = m(lon, lat)
         
         # Construct Delaunay tesselation
         # I use scipy's code since the current Matplotlib release delaunay implementation is fragile.
-        D = Delaunay(np.array([x,y]).T)
-        T = tri.Triangulation(x, y, D.vertices)
-        
-        
-        # Masked values
-        area = triangle_area(x, y, D.vertices)
-        dist = np.max(np.sqrt(np.diff(x[D.vertices], axis=1)**2 + np.diff(y[D.vertices])**2), axis=1)
-        #md = d[T.triangles].min(axis=1) 
-        ma = (area > 1e6) | (dist > 1e3)
-        T.set_mask(ma)
-        #print (np.sum(ma))
-        
+        T = analysis.get_tesselation(reg)
         
         #plt.tricontourf(T, d, 20, mask=ma, vmin=0, vmax=20, cmap=cm)
         plt.tripcolor(T, d, vmin=0, vmax=20, cmap=cm)
     
     cb = plt.colorbar()
     cb.set_label('Profondeur [m]')
-    
     
     
     

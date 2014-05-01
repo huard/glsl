@@ -362,7 +362,7 @@ def FF_flow(site, scen='bc'):
     * ont: Lake Ontario
     """
     
-    tributaries = 'mau', 'fran', 'rich'
+    tributaries = 'mau', 'fran', 'rich', 'chat', 'bat'
     
     if site in tributaries:
         DIR = '../data/FF/Input_CC'
