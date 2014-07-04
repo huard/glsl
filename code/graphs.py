@@ -6,12 +6,14 @@ from mpl_toolkits import basemap
 from matplotlib.ticker import Formatter
 import pandas as pd
 import datetime as dt
+import GLSLutils as util
 
 import GLSLio
 import analysis
 from imp import reload
 reload(GLSLio)
 reload(analysis)
+reload(util)
 
 mpl.rcParams['svg.fonttype'] = 'none'
 mpl.rcParams['font.family'] = 'Droid Sans'
@@ -28,6 +30,12 @@ ncolors=11;
 _haxby=np.array([[ 37, 57, 175], [40, 127, 251], [50, 190, 255], [106, 235, 255], [138, 236, 174], [205, 255, 162], [240, 236, 121], [255, 189, 87], \
     [255, 161, 68], [255, 186, 133], [255, 255, 255]])/255.;
 haxby = mpl.colors.LinearSegmentedColormap.from_list('haxby', _haxby[::-1])
+
+
+# Scenario colors
+cs1 = '#bd56af'
+cs2 = '#d88708'
+cbc = '#333232'
 
 class QOMFormatter(Formatter):
   def __init__(self, seq):
@@ -50,6 +58,41 @@ def strip(ax):
     ax.spines['bottom'].set_position(('outward',10))
     ax.yaxis.tick_left()
     ax.xaxis.tick_bottom()
+
+
+def scenarios(scens=[1,2]):
+
+    fig, ax = plt.subplots(figsize=(14,6))
+    fig.subplots_adjust(left=.06, right=.98)
+    lw = .5
+
+    ax2 = plt.twiny(ax)
+
+    if 1 in scens:
+        bc, ts = analysis.scenario_1()
+
+        ax.plot_date(util.ordinal_qom(bc), bc.values, '-', color=cbc, label="Base Case", lw=lw)
+        ax2.plot_date(util.ordinal_qom(ts), ts.values, '-', color=cs1, lw=lw, label="Scenario #1")
+
+        ax2.fill_between(util.ordinal_qom(ts), ts.values, bc.values, where=ts.values<bc.values, color=cs1, alpha=.5)
+        ax2.fill_between(util.ordinal_qom(ts), ts.values, bc.values, where=ts.values>bc.values, color=cbc, alpha=.5, label="Scenario #1")
+
+    if 2 in scens:
+        bc, ts = analysis.scenario_2()
+
+        ax.plot_date(util.ordinal_qom(bc), bc.values, '-', color=cbc, lw=lw)
+        ax2.plot_date(util.ordinal_qom(ts), ts.values, '-', color=cs2, lw=lw, label="Scenario #2")
+        ax2.fill_between(util.ordinal_qom(ts), ts.values, bc.values, where=ts.values<bc.values, color=cs2, alpha=.5)
+        ax2.fill_between(util.ordinal_qom(ts), ts.values, bc.values, where=ts.values>bc.values, color=cbc, alpha=.5, label="Scenario #2")
+
+    ax.set_ylabel('Débit à Sorel [m³/s]')
+
+    ax.legend(loc='upper left', frameon=False)
+    ax2.legend(loc='upper right', frameon=False)
+
+    return fig
+
+
 
 def NBS_qm_correction(n=10):
     qm = analysis.QM_NBS(n)
@@ -121,7 +164,6 @@ def NBS_cycle(stat=np.mean):
     ax.legend(loc='lower right', fontsize='small', frameon=False, numpoints=1)
 
     fig.savefig('../figs/NBS_annual_cycle_full.png')
-
 
 def scenario_2():
     y, cc = analysis.flow_cc()
@@ -325,11 +367,6 @@ def plot_station_qom_levels(sid):
 
   return fig, ax
 
-def ordinal(ts):
-    """Return the ordinal value of a time series date index."""
-    import operator
-    toord = operator.methodcaller('toordinal')
-    return list(map(toord, ts.index))
 
 def plot_station_qom_level_stats(sid):
     """Graphic of the statistics of the level time series."""

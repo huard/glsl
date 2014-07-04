@@ -2,7 +2,9 @@ import graphs, GLSLio, analysis
 from matplotlib import pyplot as plt
 import os
 from imp import reload
+
 reload(graphs)
+reload(analysis)
 
 
 def station_level_stats():
@@ -78,9 +80,9 @@ def save_ff_xls(site):
         ts = analysis.get_levels_ff(site, scen)
 
         # Sum flow contributions
-        f = GLSLio.FF_flow(fs[0], scen)
+        f = FFio.FF_flow(fs[0], scen)
         for s in fs[1:]:
-            f = f.add( GLSLio.FF_flow(s, scen) )
+            f = f.add( FFio.FF_flow(s, scen) )
 
         F = ts.valid().to_frame('Level m')
         F['Flow m3s'] = f
@@ -92,4 +94,6 @@ def save_ff_xls(site):
         fn = 'Water_Levels_IJC_{0}_{1}_IGLD85.xlsx'.format(CP['names'][i], scen.upper())
         P.to_excel(fn)
 
-    #W.save()
+def chee():
+    for site in ['srl', 'var']:
+        save_ff_xls(site)

@@ -2,7 +2,7 @@
 import numpy as np
 import scipy.stats
 import pandas as pd
-import GLSLio
+import GLSLio, FFio, ECio, HYDATio
 from imp import reload
 from matplotlib import pyplot as plt
 reload(GLSLio)
@@ -56,38 +56,71 @@ gcms = {'CGCM2.3': (('afp',), ('afq',)),
 aliases = {'aet': 'aeu', 'aev': 'aew', 'aey': 'afb','aez': 'afc','afa': 'afd',\
          'afp': 'afq', 'agw': 'ahb','agx': 'agz', 'ahi': 'ahk','ahj': 'ahw'}
 
-def flow_cc():
+def NBS_delta():
+    """Return the climate change NBS delta on a monthly basis."""
+
     months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
     ref = {}; fut = {}
+
     for m in months:
         nbs = GLSLio.NBS(m)
         wa = GLSLio.basins_weighted_NBS_average(nbs)
-        ref[m] = np.mean([wa[a] for a in aliases.keys()])
-        fut[m] = np.mean([wa[a] for a in aliases.values()])
+        ref[m] = wa['afa'] #np.mean([wa[a] for a in aliases.keys()])
+        fut[m] = wa['afd'] #np.mean([wa[a] for a in aliases.values()])
 
     r = np.array([ref[m] for m in months])
     f = np.array([fut[m] for m in months])
 
-    # Sorel
-    ts = GLSLio.Q_Sorel('qtm')
-    y = ts.groupby(level=1).mean()
+    return r, f
+
+def scenario_1():
+    bc = get_flow_sorel('bc')[:30*48]
+    ts = get_flow_sorel('wd')[:30*48]
+    return bc, ts
+
+
+def scenario_2():
+
+    # NBS delta
+    r, f = NBS_delta()
+    delta = f - r
+
+    # Sorel base series
+    ts = ECio.Q_Sorel('qtm')
+
+    # Compute annual cycle
+    an = ts.groupby(level=1).mean()
+
+    # Scale the climate change factor in mm³/s with respect to the amplitude.
+    # Translate by two weeks the signal
     x = np.linspace(0,11, 48)
+    cc = np.interp(x, range(12), delta/r.ptp()) * an.ptp()
+    cc = np.roll(cc, 2)
 
-    # Climate change factor in mm³/s (2065)
-    cc = np.roll(np.interp(x, range(12), (f-r)/r.ptp()) * y.ptp(), 2)
+    bc = ts.ix[1953:2012]; #57
+    #bc = ts.ix[1962:1991]; #78
 
-    y = ts[963:963+60*48] # From  1953 to 2012 -> 2010 to 1969
+    s2 = apply_delta(shift_mi(bc, 57), cc)
 
-    years = np.arange(2010, 2070)
-    f = (years - 1975) / 90.
+    return bc, s2
 
-    y1 = y[:] + np.ravel( np.atleast_2d(f).T * cc )
-    l0, l1 = y1.index.levels
-    l0 += 57
+def shift_mi(ts, a):
+    out = ts[:]
 
-    y1.index.set_levels([l0, l1], True)
+    l0, l1 = out.index.levels
+    l0 += a
 
-    return y,y1
+    out.index.set_levels([l0, l1], True)
+    return out
+
+
+def apply_delta(ts, delta, y0=1965, y1=2055):
+    y = np.array(ts.index.get_level_values(0))
+    q = np.array(ts.index.get_level_values(1))
+
+    f = (y - y0)/(y1-y0)
+    cc = delta[q-1] * f
+    return ts + cc
 
 
 
@@ -322,7 +355,8 @@ def get_flow_sorel(scen='bc'):
     the flows?
     """
     qs = 'stl', 'dpmi', # Is there something else, do we need to scale those ?
-    Q = [GLSLio.FF_flow(q, scen) for q in qs]
+    yo = offset[scen] 
+    Q = [FFio.FF_flow(q, scen, yo)for q in qs]
     return sum(Q)
 
 
