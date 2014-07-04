@@ -51,6 +51,198 @@ def strip(ax):
     ax.yaxis.tick_left()
     ax.xaxis.tick_bottom()
 
+def NBS_qm_correction(n=10):
+    qm = analysis.QM_NBS(n)
+
+
+    cm = plt.cm.jet(np.linspace(0,1,4))
+    fig, axes = plt.subplots(nrows=4, figsize=(8.5, 11))
+    gcms = ['CGCM3.1', 'ECHAM5', 'CNRM-CM3', 'CGCM2.3']
+
+    for i, s in enumerate(['winter', 'spring', 'summer', 'fall']):
+        axes[i].set_color_cycle(cm)
+        axes[i].text(.05, .9, s.capitalize(), transform=axes[i].transAxes)
+
+        for gcm, vals in qm[s].items():
+            j = gcms.index(gcm)
+            #axes[i].plot(range(0,100,10), vals, label=gcm)
+            axes[i].bar(np.linspace(0, 100, n)+j*2, vals, 1.9, color=cm[j], label=gcm)
+
+    axes[0].legend(ncol=4, frameon=False, loc='lower center', bbox_to_anchor=(.5, 1.05))
+    axes[-1].set_xlabel('Percentile')
+    plt.setp(axes, ylabel='ΔNBS')
+
+
+def NBS_cycle(stat=np.mean):
+    """Plot the annual NBS cycle."""
+    import ndict
+
+    months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+    res = ndict.NestedDict()
+    for m in months:
+        res[m] = GLSLio.NBS(m, stat)
+        wa = GLSLio.basins_weighted_NBS_average(res[m])
+        res[m]['lacgreat lakes'] = wa
+        res[m].pop('lacMHG')
+
+    nbs = ndict.NestedDict()
+    for l in res.keylevel(1):
+        for a in res.keylevel(2):
+            nbs[l][a] = [res[m][l][a] for m in months]
+
+    fig = plt.figure(figsize=(8.5,11))
+    gs = plt.GridSpec(8,1)
+    loc = dict(lacontario=(0,0), lacerie=(1,0), lachuron=(2,0), lacmichigan=(3,0), lacsuperior=(4,0), )
+    loc['lacgreat lakes'] = (slice(5,7), 0)
+
+    lakes = nbs.keylevel(0)
+    lnames = [s[3:].title() for s in lakes]
+
+    for i, lake in enumerate(lakes):
+        ax = fig.add_subplot(gs[loc[lake]])
+        ax.set_color_cycle(plt.cm.jet(np.linspace(0,1,10)))
+        for (r,f) in analysis.aliases.items():
+            ax.plot(nbs[lake][r], marker='o', lw=1, mec='none', label=r)
+        ax.plot(nbs[lake]['obs'], ms=10, lw=2, color='#272727', label='Obs.'    )
+
+        ax.text(.02, .7, lnames[i], ha='left', va='baseline', size='large', weight='bold', color='#272727', transform=ax.transAxes)
+
+    ax = fig.add_subplot(gs[7,0])
+    ax.set_color_cycle(plt.cm.jet(np.linspace(0,1,10)))
+    for (r,f) in analysis.aliases.items():
+        ax.plot(np.array(nbs[lake][f]) - np.array(nbs[lake][r]), marker='o', lw=1, mec='none', label='{0}/{1}'.format(r,f))
+    ax.axhline(0, color='gray', zorder=-1)
+    ax.text(.02, .7, 'Great Lakes CC', ha='left', va='baseline', size='large', weight='bold', color='#272727', transform=ax.transAxes)
+
+    ax = fig.axes[-3]
+    ax.set_ylabel('NBS (Référence) mm/j')
+
+    ax.set_xlabel('Mois')
+    ax.legend(loc='lower right', fontsize='small', frameon=False, numpoints=1)
+
+    fig.savefig('../figs/NBS_annual_cycle_full.png')
+
+
+def scenario_2():
+    y, cc = analysis.flow_cc()
+
+    fig, ax = plt.subplots(figsize=(14,6))
+    fig.subplots_adjust(left=.06, right=.98)
+    ax.plot_date([x.toordinal() for x in GLSLio.qom2date(y.index.to_series().values)], y.values, 'k-', label='Débits reconstitués à Sorel')
+
+    ax2 = plt.twiny()
+
+    # Compare with scenario 1
+    ts = analysis.get_flow_sorel('wd')[:30*48]
+    l0, l1 = ts.index.levels
+    l0 += 2039
+
+    ts.index.set_levels([l0, l1], True)
+
+    ax2.plot_date( [x.toordinal() for x in GLSLio.qom2date(ts.index.to_series().values)], ts.values, '-', color='blue', label='Débits scénario #1', alpha=.7, zorder=-1)
+
+    # Scenario 2
+    ax2.plot_date( [x.toordinal() for x in GLSLio.qom2date(cc.index.to_series().values)], cc.values, '-', color='orange', label='Débits scénario #2', alpha=.7)
+
+    ax.set_ylabel('Débit à Sorel [m³/s]')
+
+    ax.legend(loc='upper left', frameon=False)
+    ax2.legend(loc='upper right', frameon=False)
+
+    fig.savefig('../figs/scenario2.png')
+
+
+def NBS_cycle_model_average():
+    months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+    ref = {}; fut = {}
+    for m in months:
+        nbs = GLSLio.NBS(m)
+        wa = GLSLio.basins_weighted_NBS_average(nbs)
+        ref[m] = np.mean([wa[a] for a in analysis.aliases.keys()])
+        fut[m] = np.mean([wa[a] for a in analysis.aliases.values()])
+
+    fig, axes = plt.subplots(nrows=2)
+    fig.subplots_adjust(top=.87, hspace=.3, right=.89, left=.1)
+    r = np.array([ref[m] for m in months])
+    f = np.array([fut[m] for m in months])
+
+    # Sorel
+    ts = GLSLio.Q_Sorel('qtm')
+    y = ts.groupby(level=1).mean()
+    x = np.linspace(0,11, 48)
+
+    axes[0].plot(r, label="Reference annual NBS cycle", color='b', lw=2)
+    axes[0].plot(f, label="Future annual NBS cycle", color='orange', lw=2)
+    axes[0].set_ylabel('NBS [mm/j]')
+    axes[0].legend(loc='lower left', bbox_to_anchor=(0,1), frameon=False, fontsize='small')
+    ax = plt.twinx(axes[0])
+    ax.plot(x, y, color='k', lw=2, label="Débit à Sorel [m³/s]")
+    ax.set_ylabel('Sorel flow [m³/s]')
+    ax.legend(loc='lower right', bbox_to_anchor=(1,1), frameon=False, fontsize='small')
+
+    axes[1].plot(f-r, label="CC NBS", color='k', lw=2)
+    axes[1].axhline(0, color='gray')
+    cc = np.roll(np.interp(x, range(12), (f-r)/r.ptp()) * y.ptp(), 2)
+    ax2 = plt.twinx(axes[1])
+    ax2.plot(x, cc, 'r-', lw=2, label='CC Sorel flow [m³/s]')
+
+
+    plt.setp(axes, xticks=range(12), xlim=(0,11))
+    axes[0].set_xticklabels([])
+    axes[1].set_xticklabels([m.capitalize() for m in months])
+    axes[1].legend(loc='lower left', bbox_to_anchor=(0,1), frameon=False, fontsize='small')
+    ax2.legend(loc='lower right', bbox_to_anchor=(1,1), frameon=False, fontsize='small')
+    axes[1].set_ylabel('Δ NBS [mm/j]')
+    ax2.set_ylabel('Δ Débit [m³/s]')
+    axes[1].set_xlabel("Mois")
+
+    fig.savefig('../figs/NBS_annual_cycle.png')
+    return fig
+
+
+def NBS_scatter(freq='annual', stat=np.mean):
+    """Plot the future vs reference NBS for each lake.
+    """
+    nbs, aliases = GLSLio.NBS(freq, stat)
+
+    # All GL
+    wa = GLSLio.basins_weighted_NBS_average(nbs)
+    nbs['lacgreat lakes'] = wa
+
+    nbs.pop('lacMHG')
+    lakes = nbs.keylevel(0)
+    lnames = [s[3:].title() for s in lakes]
+
+    #fig, axes = plt.subplots(ncols=5, figsize=(14,8.5))
+    fig = plt.figure(figsize=(8,5))
+    gs = plt.GridSpec(3,3)
+    loc = dict(lacontario=(0,0), lacerie=(1,0), lachuron=(2,0), lacmichigan=(0,1), lacsuperior=(0,2), )
+    loc['lacgreat lakes'] = (slice(1,None), slice(1,None))
+
+    for i, lake in enumerate(lakes):
+
+        ax = fig.add_subplot(gs[loc[lake]])
+        ax.set_color_cycle(plt.cm.jet(np.linspace(0,1,10)))
+        for (r,f) in aliases.items():
+            ax.plot([nbs[lake][r],], [nbs[lake][f],], marker='o', lw=0, mec='none', label='{0}/{1}'.format(r,f))
+        ax.plot([nbs[lake]['obs'],], [nbs[lake]['obs'],], marker='+', ms=10, lw=0, mec='#272727', mew=2, label='Obs.'    )
+
+        ax.text(.05, .8, lnames[i], ha='left', va='baseline', size='large', weight='bold', color='#272727', transform=ax.transAxes)
+        ax.set_aspect('equal', adjustable='datalim')
+
+    ax = fig.axes[-2]
+    ax.set_xlabel('NBS (Référence) mm/j')
+    fig.axes[2].set_ylabel('NBS (Futur) mm/j')
+    ax.legend(loc='lower right', fontsize='small', frameon=False, numpoints=1)
+
+    for ax in fig.axes:
+        ax.set_autoscale_on(False)
+        ax.plot([-10,10], [-10,10], color='grey', alpha=.5, lw=.5)
+
+
+
+
+
 def plot_FF_flow(site):
     """Plot time series of the flow.
     """
@@ -242,6 +434,15 @@ def plot_Sorel_annual_minimum_qom_levels():
 
     ax.text(1961, 0, 'Zéro des cartes', size=8, ha='left', )
 
+def Sorel_annual_cycle():
+    fig, ax = plt.subplots(1)
+    ts = GLSLio.Q_Sorel('qtm')
+    y = ts.groupby(level=1).mean()
+    y.plot(ax=ax)
+    ax = plt.gca()
+    ax.set_ylabel('Débit [m³/s]')
+    ax.set_xlim(0,48)
+
 
 def plot_Sorel_annual_minimum_qom_levels_flows():
 
@@ -249,10 +450,6 @@ def plot_Sorel_annual_minimum_qom_levels_flows():
     # Load levels
     ra = GLSLio.EC_H20('../data/Niveaux St-Laurent/15930-1-JAN-1916_slev.csv')
     level_min = GLSLio.annual_min_qom_ts(ra)
-
-
-
-
 
     # Load streamflow
     ts = GLSLio.Q_Sorel('qtm')

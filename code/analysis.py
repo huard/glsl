@@ -15,6 +15,9 @@ Base case (bc) is meteorological data driven through the GL model, including reg
 WW and WD cases are the base case to which a delta is applied.
 """
 
+offset = {'bc': 1961,
+          'ww': 2039,
+          'wd': 2039}
 
 """Variables tirées du rapport de Bouchard et Morin."""
 # Débits des scénarios à Sorel
@@ -44,6 +47,193 @@ CP = dict(sites = ('mtl', 'var', 'srl', 'lsp', 'trois'),
           coords = ((-73.5525, 45.5035), (-73.443667, 45.684333), (-73.115667, 46.047167), (-72.8955, 46.194833), (-72.539167, 46.3405 )),
           names = ('Jetée #1', 'Varennes', 'Sorel', 'Lac St-Pierre', 'Trois-Rivières'))
 
+gcms = {'CGCM2.3': (('afp',), ('afq',)),
+        'CGCM3.1': (('aey', 'aez', 'afa', 'aet', 'aev'),
+                    ('afb', 'afc', 'afd', 'aeu', 'aew')),
+        'CNRM-CM3': (('agw',), ('ahb',)),
+        'ECHAM5': (('agx', 'ahi', 'ahj'), ('agz', 'ahk', 'ahw'))}
+
+aliases = {'aet': 'aeu', 'aev': 'aew', 'aey': 'afb','aez': 'afc','afa': 'afd',\
+         'afp': 'afq', 'agw': 'ahb','agx': 'agz', 'ahi': 'ahk','ahj': 'ahw'}
+
+def flow_cc():
+    months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+    ref = {}; fut = {}
+    for m in months:
+        nbs = GLSLio.NBS(m)
+        wa = GLSLio.basins_weighted_NBS_average(nbs)
+        ref[m] = np.mean([wa[a] for a in aliases.keys()])
+        fut[m] = np.mean([wa[a] for a in aliases.values()])
+
+    r = np.array([ref[m] for m in months])
+    f = np.array([fut[m] for m in months])
+
+    # Sorel
+    ts = GLSLio.Q_Sorel('qtm')
+    y = ts.groupby(level=1).mean()
+    x = np.linspace(0,11, 48)
+
+    # Climate change factor in mm³/s (2065)
+    cc = np.roll(np.interp(x, range(12), (f-r)/r.ptp()) * y.ptp(), 2)
+
+    y = ts[963:963+60*48] # From  1953 to 2012 -> 2010 to 1969
+
+    years = np.arange(2010, 2070)
+    f = (years - 1975) / 90.
+
+    y1 = y[:] + np.ravel( np.atleast_2d(f).T * cc )
+    l0, l1 = y1.index.levels
+    l0 += 57
+
+    y1.index.set_levels([l0, l1], True)
+
+    return y,y1
+
+
+
+def QM_NBS(n=10):
+    """Seasonal quantile ratios for NBS, computed by driving GCM.
+
+    Corrections computed for each decile.
+    """
+    import collections
+    rgcm = {}
+    for k, vals in gcms.items():
+        for v in vals:
+            rgcm[v] = k
+
+    q = {}
+    for s in ['winter', 'spring', 'summer', 'fall', 'annual']:
+        ref = collections.defaultdict(list)
+        fut = collections.defaultdict(list)
+
+        q[s] = {}
+        nbs = GLSLio.NBS(s, lambda x: x)
+        wa = GLSLio.basins_weighted_NBS_average(nbs)
+
+        for g, (R,F) in gcms.items():
+            for r, f in zip(R, F):
+                ref[g].extend(wa[r].compressed().tolist())
+                fut[g].extend(wa[f].compressed().tolist())
+
+        for gcm in ref.keys():
+            q[s][gcm] = quantile_means(ref[gcm], n), quantile_means(fut[gcm], n)
+
+    return q
+
+def print_tables():
+    import csv, itertools
+
+    # Print the full table of NBS average for each simulation and each lake.
+    nbs = GLSLio.NBS()
+    wa = GLSLio.basins_weighted_NBS_average(nbs)
+    nbs.pop('lacMHG')
+    nbs['lactotal'] = wa
+
+    if 0:
+        W = csv.writer(open('../rapport/tableaux/sim_average_per_lake.csv', 'w'))
+        header = ['']+[lake[3:].capitalize() for lake in nbs.keys()]
+        W.writerow(header)
+
+        table = []
+        for g, (R, F) in gcms.items():
+            al = list(itertools.chain(*zip(R,F)))
+            for a in al:
+                row = [a,]
+                for lake, val in nbs.items():
+                    row.append(val[a])
+                table.append(row)
+
+        W.writerows(table)
+        return table
+
+    if 1:
+        W = csv.writer(open('../rapport/tableaux/sim_average_per_season.csv', 'w'))
+        q = QM_NBS(1)
+
+        header = ['Winter', 'Spring', 'Summer', 'Fall', 'Annual']
+        W.writerow([""]+ header)
+
+        for g in gcms.keys():
+            row_r = [g,]
+            for s in header:
+                row_r.append( q[s.lower()][g][0][0] )
+            W.writerow(row_r)
+
+            row_f = ['',]
+            for s in header:
+                row_f.append( q[s.lower()][g][1][0] )
+            W.writerow(row_f)
+
+
+
+
+
+
+
+def model_average(x):
+    """Given a NestedDict, find the level at which the simulations are stored
+    by alias then replace the individual simulation values by a mean over
+    all simulations belonging to the same pilot and splitting the simulations
+    between reference and future periods.
+    """
+    pass # incomplete
+    import ndict
+    assert type(x) == ndict.NestedDict
+    out = ndict.NestedDict()
+
+    # Find at which level the alias is stored in the dict
+    for i in range(x.depth):
+        if 'aet' in x.keylevel(i):
+            level = i
+            break
+
+    for g, aliases in gcms.items():
+        for per, al in zip(('ref', 'fut'), aliases):
+            av = []
+            for it, val in x.walk({level:al}):
+                av.append(val)
+            it = list(it)
+            it.pop(level)
+            it.insert(level, g)
+            it.insert(level+1, per)
+            out.set(it, np.mean(av))
+
+    return out
+
+def quantile_means(x, n=10):
+    """Split the sorted sample in `n` groups and compute their individual mean."""
+    sx = np.sort(x)
+    s = len(x)
+
+    bins = np.around(np.linspace(0, s, n+1)).astype(int)
+
+    out = []
+    count = []
+    for i in range(n):
+        b1, b2 = bins[i:i+2]
+        a = sx[slice(b1, b2)]
+        count.append(len(a))
+        out.append(a.mean())
+
+    assert sum(count)==s
+    return np.array(out)
+
+
+
+def get_StLawrence_stations():
+    import sqlite3
+    path = GLSLio.HYDAT
+    with sqlite3.connect(path) as conn:
+        cur = conn.cursor()
+        cmd = """SELECT STATION_NUMBER, STATION_NAME from "stations" WHERE STATION_NUMBER IN (
+        SELECT  STATION_NUMBER FROM "stations" WHERE "STATION_NAME" LIKE "%FLEUVE%"
+        INTERSECT
+        SELECT STATION_NUMBER FROM "stn_data_range" WHERE RECORD_LENGTH>10  AND DATA_TYPE=?);
+        """
+        rows = cur.execute(cmd, ('H',))
+        return list(rows)
+
 
 
 def stage_discharge_ff(site,):
@@ -52,7 +242,7 @@ def stage_discharge_ff(site,):
 
     Parameters
     ----------
-    site : {'mtl', 'var', 'srl', 'lsl', trois'}
+    site : {'mtl', 'var', 'srl', 'lsp', trois'}
       Name of control point.
 
     Returns
@@ -118,12 +308,20 @@ def get_levels_ff(site, scen='bc'):
     T = GLSLio.FF_tidal()
 
     f = stage_discharge_ff(site)
-    return f(K*Q, T)
+    ts = f(K*Q, T)
+    return ts
 
 def get_flow_sorel(scen='bc'):
     """Sum the flow from tributaries to get the flow at Sorel from the
-    F&F flows."""
-    qs = 'stl', 'dpmi', 'chat', # Is there something else, do we need to scale those ?
+    F&F flows.
+
+    Note
+    ----
+    By neglecting the flows from smaller tributaries, isn't there is a risk of
+    underestimating the levels, because we are systematically underestimating
+    the flows?
+    """
+    qs = 'stl', 'dpmi', # Is there something else, do we need to scale those ?
     Q = [GLSLio.FF_flow(q, scen) for q in qs]
     return sum(Q)
 
@@ -226,9 +424,19 @@ def get_domain(lon, lat):
     raise ValueError("Point not in any domain")
 
 
-def interpolate_EC_levels(lon, lat):
-    """Return the eight levels interpolated from the grid data."""
+def interpolate_EC_levels(lon, lat, scens=None):
+    """Return the eight levels interpolated from the grid data.
+
+    Parameters
+    ----------
+    lon, lat: float
+      Geographic coordinates
+    scens: list
+      Scenarios (1-8) for which to interpolate the level. If None, return the 8 levels.
+
+    """
     from matplotlib import tri
+    import scipy.interpolate
     # Native coordinates
     P = GLSLio.MTM8()
     x, y = P(lon, lat)
@@ -246,8 +454,11 @@ def interpolate_EC_levels(lon, lat):
     z = I(x, y)[0]
 
     # Compute depth for each scenario
+    if scens is None:
+        scens = range(1,9)
+
     out = []
-    for scen in range(1,9):
+    for scen in scens:
         D = GLSLio.get_scen(scen, dom, variables=('PROFONDEUR',)).T
         I.values = D
         out.append( I(x, y)[0] )
@@ -263,6 +474,16 @@ def save_control_points_EC_levels():
         except:
             levels.append(None)
     return levels
+
+def EC_interpolation(lon, lat, flow_at_sorel):
+    """Return the level interpolated from the EC 2D simulations."""
+    L = interpolate_EC_levels(lon, lat)
+    wi = get_EC_scenario_index(flow_at_sorel)
+    levels = interpolate_EC_levels(lon, lat, [int(np.floor(wi)), int(np.ceil(wi))])
+    w = 1.-np.mod(wi,1)
+    return levels[0] * w + levels[1]*(1-w)
+
+
 
 def interpolate_ff_levels(lon, lat, scen='bc'):
     """For a given point, compute the value interpolated from the Fan &
@@ -340,8 +561,7 @@ def interpolate_ff_levels(lon, lat, scen='bc'):
     FS = get_flow_sorel(scen)
 
     # 2.2 Identify the scenarios above and below the Sorel streamflow
-    refQ = EC_scen_Q['Sorel']
-    wi = np.interp(FS, refQ, range(1,9))
+    wi = get_EC_scenario_index(FS)
     wi[FS.isnull().values] = 0
 
     # 2.3 Interpolate the scenario level at the point of interest
@@ -356,7 +576,13 @@ def interpolate_ff_levels(lon, lat, scen='bc'):
     # 2.6 Apply the difference to the Fan & Fay series interpolated at the point of interest
     return FF_L + weight_EC_levels(deltas, wi)
 
-
+def get_EC_scenario_index(flow):
+    """Return a value indicating where with respect to the 8 scenarios the flow
+    value stand.
+    """
+    refQ = EC_scen_Q['Sorel']
+    wi = np.interp(flow, refQ, range(1,9))
+    return wi
 
 def weight_EC_levels(levels, wi):
     """Interpolate within the 8 EC levels.
