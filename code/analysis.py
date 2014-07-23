@@ -15,10 +15,6 @@ Base case (bc) is meteorological data driven through the GL model, including reg
 WW and WD cases are the base case to which a delta is applied.
 """
 
-offset = {'bc': 1961,
-          'ww': 2039,
-          'wd': 2039}
-
 """Variables tirées du rapport de Bouchard et Morin."""
 # Débits des scénarios à Sorel
 EC_scen_Q = {'Sorel':[5000, 6500, 8000, 9500, 12000, 14500, 17500, 20500],
@@ -74,9 +70,11 @@ def NBS_delta():
     return r, f
 
 def scenario_1():
-    bc = get_flow_sorel('bc')[:30*48]
-    ts = get_flow_sorel('wd')[:30*48]
-    return bc, ts
+    bc = FFio.total_flow('srl', 'bc')
+    wd = FFio.total_flow('srl', 'wd')
+
+
+    return bc.reindex(bc.index.truncate(after=1991)), wd.reindex(wd.index.truncate(after=2069))
 
 
 def scenario_2():
@@ -97,7 +95,7 @@ def scenario_2():
     cc = np.interp(x, range(12), delta/r.ptp()) * an.ptp()
     cc = np.roll(cc, 2)
 
-    bc = ts.ix[1953:2012]; #57
+    bc = ts.reindex(ts.index.truncate(1953,2012)) #57
     #bc = ts.ix[1962:1991]; #78
 
     s2 = apply_delta(shift_mi(bc, 57), cc)
@@ -256,7 +254,7 @@ def quantile_means(x, n=10):
 
 def get_StLawrence_stations():
     import sqlite3
-    path = GLSLio.HYDAT
+    path = HYDATio.HYDAT
     with sqlite3.connect(path) as conn:
         cur = conn.cursor()
         cmd = """SELECT STATION_NUMBER, STATION_NAME from "stations" WHERE STATION_NUMBER IN (
@@ -269,95 +267,6 @@ def get_StLawrence_stations():
 
 
 
-def stage_discharge_ff(site,):
-    """Return the equation from Fan & Fay (2002) relating stage to
-    discharge at locations on the St. Lawrence.
-
-    Parameters
-    ----------
-    site : {'mtl', 'var', 'srl', 'lsp', trois'}
-      Name of control point.
-
-    Returns
-    -------
-    func : function
-      Function computing level from flow series
-
-    Notes
-    -----
-
-    Control points:
-     * Jetée #1 (15520) (02OA046)
-     * Varennes (155660) (02OA050) 45.684º N, 73.443º W
-     * Sorel (15930) (02OJ022)  46.047º N, 73.115º W
-     * Lac St-Pierre (15975) (02OC016) 46.194º N, 72.895º W
-     * Trois-Rivières (03360) (?) 46.3405º N, 72.539167º W
-
-    The function will then accept a vector of flows from
-     * Lac St-Louis (02OA016, 02OA024)
-     * Des Prairies & Milles-Iles (02OA004, 02OA003)
-     * Richelieu (02OJ007)
-     * St-François (02OF019)
-     * St-Maurice (02NG005)
-
-    """
-    regcoefs = {'mtl':[(.001757, .000684, 0, 0.001161, 0.000483), 0.6587, 0.9392],
-                'var':[(0.001438, 0.001377, 0, 0.001442, 0.000698), 0.6373, 1.0578],
-                'srl':[(0.001075, 0.001126, 0, 0.001854, 0.000882), 0.6331, 1.277],
-                'lsp':[(0.000807, 0.001199, 0, 0.001954, 0.000976), 0.6259, 1.4722],
-                'trois':[(.000584, .00069, .000957, .001197, .000787), .7042, 1.5895],
-                #'tr':[(.000589, .000727, .00102, .001158, .000815), 0.6981, 1.5919],
-                }
-
-    c, h, t = regcoefs[site.lower()]
-
-    def func(Q, tidal):
-        """Return level computed from tributaries' flow and tidal component.
-        Note that the roughness factor accounting for ice effects is
-        expected to be included in the flow Q.
-        """
-        a = np.dot(c, Q)**h
-        t1 = pd.Series(data=a, index=Q.axes[1])
-        return t1 + t * tidal
-    return func
-
-def get_levels_ff(site, scen='bc'):
-    """Return the levels from the Fan & Fay scenarios.
-
-    Parameters
-    ----------
-    site : {'mtl', 'var', 'srl', 'lsl', trois'}
-      Name of control point.
-
-    scen : {'bc', 'wd', 'ww'}
-      Scenario name: Base Case, Warm & Dry, Warm & Wet.
-
-    """
-    qs = 'stl', 'dpmi', 'rich', 'fran', 'mau'
-    Q = pd.DataFrame([GLSLio.FF_flow(q, scen) for q in qs])
-
-    K = GLSLio.FF_K(site)
-
-    T = GLSLio.FF_tidal()
-
-    f = stage_discharge_ff(site)
-    ts = f(K*Q, T)
-    return ts
-
-def get_flow_sorel(scen='bc'):
-    """Sum the flow from tributaries to get the flow at Sorel from the
-    F&F flows.
-
-    Note
-    ----
-    By neglecting the flows from smaller tributaries, isn't there is a risk of
-    underestimating the levels, because we are systematically underestimating
-    the flows?
-    """
-    qs = 'stl', 'dpmi', # Is there something else, do we need to scale those ?
-    yo = offset[scen] 
-    Q = [FFio.FF_flow(q, scen, yo)for q in qs]
-    return sum(Q)
 
 
 def get_tesselation(domain):
@@ -444,7 +353,7 @@ def get_domain(lon, lat):
     import matplotlib as mpl
 
     # Convert coordinates in native grid coordinates
-    P = GLSLio.MTM8()
+    P = ECio.MTM8()
     x, y = P(lon, lat)
 
     # Load convex_hulls
@@ -472,18 +381,18 @@ def interpolate_EC_levels(lon, lat, scens=None):
     from matplotlib import tri
     import scipy.interpolate
     # Native coordinates
-    P = GLSLio.MTM8()
+    P = ECio.MTM8()
     x, y = P(lon, lat)
 
     # Domain identification
     dom = get_domain(lon, lat)
 
     # Interpolate from grid
-    X, Y = GLSLio.get_scen(8, dom, variables=('X', 'Y'))
+    X, Y = ECio.get_scen(8, dom, variables=('X', 'Y'))
     pts = np.array([X,Y]).T
 
     # Get bottom level
-    Z = GLSLio.get_scen(1, dom, variables=('Z',)).T
+    Z = ECio.get_scen(1, dom, variables=('Z',)).T
     I = scipy.interpolate.LinearNDInterpolator(pts, Z)
     z = I(x, y)[0]
 
@@ -493,7 +402,7 @@ def interpolate_EC_levels(lon, lat, scens=None):
 
     out = []
     for scen in scens:
-        D = GLSLio.get_scen(scen, dom, variables=('PROFONDEUR',)).T
+        D = ECio.get_scen(scen, dom, variables=('PROFONDEUR',)).T
         I.values = D
         out.append( I(x, y)[0] )
 
@@ -516,8 +425,6 @@ def EC_interpolation(lon, lat, flow_at_sorel):
     levels = interpolate_EC_levels(lon, lat, [int(np.floor(wi)), int(np.ceil(wi))])
     w = 1.-np.mod(wi,1)
     return levels[0] * w + levels[1]*(1-w)
-
-
 
 def interpolate_ff_levels(lon, lat, scen='bc'):
     """For a given point, compute the value interpolated from the Fan &
@@ -582,8 +489,8 @@ def interpolate_ff_levels(lon, lat, scen='bc'):
     Iw = dist[si.max()] / np.sum(dist[si])
 
     # 1.3 Compute the upstream and downstream levels from the F&F relations
-    upL = get_levels_ff(upstream, scen)
-    dnL = get_levels_ff(downstream, scen)
+    upL = FFio.level_series_QH(upstream, scen)
+    dnL = FFio.level_series_QH(downstream, scen)
 
     # 1.4 Interpolate at the chosen location based on the distance to the control points
     FF_L = Iw * upL + (1-Iw) * dnL
@@ -592,7 +499,7 @@ def interpolate_ff_levels(lon, lat, scen='bc'):
     # --------------------------------
 
     # 2.1 Compute streamflow at Sorel
-    FS = get_flow_sorel(scen)
+    FS = FFio.get_flow_sorel(scen)
 
     # 2.2 Identify the scenarios above and below the Sorel streamflow
     wi = get_EC_scenario_index(FS)
@@ -673,76 +580,3 @@ def frequential_analysis(ts):
     mu, sigma, gamma = p
 
     return scipy.stats.pearson3(gamma, mu, sigma), am.dropna()
-
-
-
-def Chateauguay_REC(validation=False):
-    """
-    Débits à la station 054 de 1970 à aujourd'hui et débits
-    à la station 001 mis-à-l'échelle pour la période pré-1970.
-    """
-
-    # Main series
-    q = GLSLio.get_dly('02OA054', 'Q')
-
-    # Secondary series
-    qp = GLSLio.get_dly('02OA001', 'Q') * 1.012
-
-    # Fill missing values in main using secondary series
-    q, qp = q.align(qp)
-    nu = q.isnull()
-    q[nu] = qp[nu]
-
-    return q[nu].fillna()
-
-def Yamaska_REC(validation=False):
-     pass
-
-def check():
-    sites = ['jetee', 'varennes', 'sorel']
-    qs = 'LaSalle', 'MIP', 'Richelieu', 'St-Francois'
-
-    for site in ['Scen'] + sites:
-            print(site, end=' \t' )
-    print('')
-
-    for scen in range(1,9):
-        print (scen, end=' \t')
-        q = [EC_scen_Q[s][scen-1] for s in qs] + [inferStMaurice(scen)]
-        for site in sites:
-            l = stage_discharge_ff(site)(q)
-            print (np.around(l - EC_scen_L[site][scen-1],4), end=' \t')
-        print('')
-
-
-def LaSalle_REC(validation=False):
-    """Débits disponibles à partir de 1955.
-    Niveaux disponibles entre 1932 et 1978.
-
-    Les débits pour la période 1932-1955 produits avec la relation
-
-        Q = A*(WL-C)^B
-
-    où A=95.0586498724
-       B=2.5689817270
-       C=-4.5575002237
-       WL = Niveau d’eau en datum local
-    """
-
-    A=95.0586498724
-    B=2.5689817270
-    C=-4.5575002237
-
-    q = GLSLio.get_dly('02OA016', 'Q')
-    h = GLSLio.get_dly('02OA016', 'H')
-
-    h1 = h[:q.index[0]][:-1]
-
-    qh = A*(h1 - C)**B
-
-    # Compare values over the period where they overlap
-    if validation:
-        pass
-        #TODO
-
-    return pd.concat((qh, q))

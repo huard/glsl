@@ -7,6 +7,7 @@ from matplotlib.ticker import Formatter
 import pandas as pd
 import datetime as dt
 import GLSLutils as util
+import pickle
 
 import GLSLio
 import analysis
@@ -33,9 +34,10 @@ haxby = mpl.colors.LinearSegmentedColormap.from_list('haxby', _haxby[::-1])
 
 
 # Scenario colors
-cs1 = '#bd56af'
-cs2 = '#d88708'
+cs1 = '#a24b11'
+cs2 = '#da0890'
 cbc = '#333232'
+cobs= '#2b2929'
 
 class QOMFormatter(Formatter):
   def __init__(self, seq):
@@ -92,6 +94,52 @@ def scenarios(scens=[1,2]):
 
     return fig
 
+def scenarios(data):
+
+    fig, axes = plt.subplots(3, 1, figsize=(14,11), sharey=True)
+    fig.subplots_adjust(left=.06, right=.98, bottom=.04)
+    lw = .5
+
+    axes[0].xaxis.tick_top()
+    axes[0].plot_date(util.ordinal_qom(data['obs']), data['obs'].values, '-', lw=lw, color=cobs, label='Observations')
+    axes[0].legend(frameon=False, loc='upper right')
+
+
+    tax1 = plt.twiny(axes[1])
+    bc1 = data['WI1']['BC']['Level m']
+    sc1 = data['WI1']['WD']['Level m']
+    L11 = tax1.plot_date(util.ordinal_qom(bc1), bc1.values, '-', color=cbc, lw=lw, label="Base case #1")[0]
+    L12 = axes[1].plot_date(util.ordinal_qom(sc1), sc1.values, '-', color=cs1, lw=lw, label="Scenario #1")[0]
+    axes[1].legend((L11, L12), ("Scénario de référence #1", "Scénario futur #1 - Chaud et sec"), frameon=False, loc="upper right")
+
+    tax2 = plt.twiny(axes[2])
+    bc2 = data['WI2']['BC']['Level m']
+    sc2 = data['WI2']['SC']['Level m']
+    L21 = tax2.plot_date(util.ordinal_qom(bc2), bc2.values, '-', color=cbc, lw=lw, label="Base case #2")[0]
+    L22 = axes[2].plot_date(util.ordinal_qom(sc2), sc2.values, '-', color=cs2, lw=lw, label="Scenario #2")[0]
+    axes[2].legend((L21, L22), ("Scénario de référence #2", "Scénario futur #2 - Amplication saisonnière"), frameon=False, loc="upper right")
+
+    plt.setp(axes, ylabel="Niveau d'eau [m]")
+
+    plt.setp(axes[0].get_xticklabels(), color=cobs)
+    plt.setp(axes[1].get_xticklabels(), color=cs1)
+    plt.setp(axes[2].get_xticklabels(), color=cs2)
+    plt.setp(tax1.get_xticklabels(), color=cbc)
+    plt.setp(tax2.get_xticklabels(), color=cbc)
+
+    return fig
+
+
+
+
+def graph_flow_level(flow, level):
+    fig, ax = plt.subplots(figsize=(8,6))
+
+    ax.plot(flow, level, 'k.', alpha=.6)
+    ax.set_xlabel("Débit [m³/s]")
+    ax.set_ylabel("Niveau [m]")
+
+    return fig
 
 
 def NBS_qm_correction(n=10):
@@ -329,6 +377,43 @@ def plot_FF_flow(site):
 
 
     return fig, ax
+
+def aecom():
+    """Plot scenarios and observations at Pointe-Claire.
+    """
+    import scripts
+    from matplotlib.transforms import offset_copy
+
+    D = pickle.load(open('../analysis/aecom.pickle', 'rb'))
+
+    a = .8;
+    lw = 1.5
+    fig, axes = plt.subplots(nrows=2, figsize=(14,11))
+    fig.subplots_adjust(left=.05, right=.97)
+
+    obs = axes[0].plot_date(util.ordinal_qom(D['obs']), D['obs'].values, '-', color=cobs, lw=lw, alpha=a, label="Observations")[0]
+    axes[0].legend(frameon=False, loc="upper right")
+    axes[0].xaxis.tick_top()
+
+    ax2 = plt.twiny(axes[1])
+    D['WI1']['BC']['Level m']
+    bc = ax2.plot_date(util.ordinal_qom(), D['bc']['Level m'].values, '-', lw=lw, color=cbc, alpha=a)[0]
+
+
+    wd = axes[1].plot_date(util.ordinal_qom(D['wd']['Level m']), D['wd']['Level m'].values, '-', lw=lw, color=cs1, alpha=a)[0]
+
+    plt.setp(axes, 'ylabel', 'Niveau [m]')
+    axes[1].legend((bc, wd), ("Scénario de référence", "Scénario #1 - Chaud et sec"), frameon=False, loc="upper right")
+
+    plt.setp(axes[0].get_xticklabels(), color=cobs)
+    plt.setp(axes[1].get_xticklabels(), color=cs1)
+    plt.setp(ax2.get_xticklabels(), color=cbc)
+
+    axes[0].text(0, 1, "Pointe-Claire", fontsize=34, weight='bold', color=cobs, alpha=.5, transform=offset_copy(axes[0].transAxes, x=0, y=30, units='dots'))
+
+    fig.savefig('../figs/Pointe-Claire.png')
+    return fig
+
 
 
 
