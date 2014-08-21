@@ -15,7 +15,7 @@ Base case (bc) is meteorological data driven through the GL model, including reg
 WW and WD cases are the base case to which a delta is applied.
 """
 
-"""Variables tirées du rapport de Bouchard et Morin."""
+"""Variables tirées du rapport de Bouchard et Morin et Miron et al (2003) pour le Lac St-Louis."""
 # Débits des scénarios à Sorel
 EC_scen_Q = {'Sorel':[5000, 6500, 8000, 9500, 12000, 14500, 17500, 20500],
              'LaSalle':[4572, 5740, 6997, 8304, 10102, 11396, 13174, 14531],
@@ -25,6 +25,11 @@ EC_scen_Q = {'Sorel':[5000, 6500, 8000, 9500, 12000, 14500, 17500, 20500],
              'Yamaska': [28, 29, 38, 52, 126, 220, 345, 410],
              'St-Francois':[120, 128, 139, 155, 330, 572, 850, 980],
              'Trois-Rivieres':[5319, 6843, 8469, 10093, 13227, 16517, 20188, 23554],
+             'Nicolet':[17,19,24,30,76,130,233,380],
+             'Maskinongé':[7,8,14,16,43,105,119,122],
+             'duLoup':[10,11,14,14,37,92,97,107],
+             'Beauharnois': [4345, 5102,5699,6589,7097,7262,7444,7660],
+             'lesCedres': [190,336,383,427,1464,1751,1815,2401]
             }
 
 # Niveaux printemps IGLD85
@@ -69,11 +74,44 @@ def NBS_delta():
 
     return r, f
 
+def scenarios_Sorel():
+    """Return DataFrames for the reference, what-if scenario 1 and 2."""
+    out = {}
+
+    # Q
+    q1 = FFio.total_flow('srl', 'wd')
+    qbc, q2 = scenario_2()
+
+    # H
+    s = '02OJ033'
+    M = HYDATio.get_station_meta(s)
+    lat, lon = M['LATITUDE'], M['LONGITUDE']
+
+    l1 = FFio.level_series_QH('srl', 'wd')
+    #ECL = interpolate_EC_levels(lon, lat)
+    ECL = [ 3.09323328,  3.49145638,  4.1352682 ,  4.74138233,  5.49859576,
+        6.38552684,  7.10856182,  8.12003153]
+
+    lbc = pd.Series(weight_EC_levels(ECL, get_EC_scenario_index(qbc)), qbc.index)
+    l2 =  pd.Series(weight_EC_levels(ECL, get_EC_scenario_index(q2)), q2.index)
+
+    Fbc = lbc.valid().to_frame('Level m')
+    Fbc['Flow m3s'] = qbc
+
+    F1 = l1.valid().to_frame('Level m')
+    F1['Flow m3s'] = q1
+
+    F2 = l2.valid().to_frame('Level m')
+    F2['Flow m3s'] = q2
+
+    return Fbc, F1, F2
+
+
+
+
 def scenario_1():
     bc = FFio.total_flow('srl', 'bc')
     wd = FFio.total_flow('srl', 'wd')
-
-
     return bc.reindex(bc.index.truncate(after=1991)), wd.reindex(wd.index.truncate(after=2069))
 
 
@@ -112,7 +150,7 @@ def shift_mi(ts, a):
     return out
 
 
-def apply_delta(ts, delta, y0=1965, y1=2055):
+def apply_delta(ts, delta, y0=1975, y1=2055):
     y = np.array(ts.index.get_level_values(0))
     q = np.array(ts.index.get_level_values(1))
 
@@ -393,7 +431,8 @@ def interpolate_EC_levels(lon, lat, scens=None):
 
     # Get bottom level
     Z = ECio.get_scen(1, dom, variables=('Z',)).T
-    I = scipy.interpolate.LinearNDInterpolator(pts, Z)
+    I = scipy.interpolate.NearestNDInterpolator(pts, Z)
+    #I = scipy.interpolate.LinearNDInterpolator(pts, Z)
     z = I(x, y)[0]
 
     # Compute depth for each scenario

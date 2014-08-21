@@ -55,6 +55,33 @@ stations_niveaux = {'Jetée #1 à Montréal':'02OA046',
 
 Bareas = dict(lacontario=8.4239E10, lacerie=8.6006E10, lachuron=1.91768E11, lacmichigan=1.73095E11, lacsuperior=2.10009E11, lacMHG=3.64863E11)
 
+def marinas():
+    import xlrd, re
+    pat = 'Lat: (\number)\\nLong: (\number)'
+
+    def degmin2dec(d,m,c):
+        """Convert degrees, minutes.decimals to plain decimals."""
+        return int(d) + float(m + '.' + c)/60.
+
+    with xlrd.open_workbook('../data/Suivi marinasGPSscenarios1a.xlsx') as wb:
+
+        ws = wb.sheet_by_name('Feuil2')
+        N = ws.col(0,1)
+        C = ws.col(4,1)
+
+        meta = {}
+        for n, c in zip(N,C):
+            if n.value == '' or c.value == '':
+                continue
+            d1,m1,c1,d2,m2,c2 = re.match('Lat: (-?\d+)\.(\d{2}),\s*(\d{2})\nLong: (-?\d+)\.(\d{2}),\s*(\d{2})', c.value).groups()
+            lat = degmin2dec(d1,m1,c1)
+            lon = -degmin2dec(d2,m2,c2)
+            meta[n.value] = lon, lat
+        return meta
+
+
+
+
 
 def NBS(freq='annual', stat=np.mean):
     """Return a dictionary holding the average NBS in the reference and future

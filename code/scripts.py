@@ -2,7 +2,7 @@ import graphs, GLSLio, FFio, analysis, GLSLutils, HYDATio
 from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
-import os, pickle
+import os, pickle, json
 from imp import reload
 
 reload(graphs)
@@ -39,6 +39,9 @@ def plot_Sorel():
 
 ## Senario #1 for Pointe-Claire
 def AECOM():
+    """Notes: le scénario livré en juillet a été produit avec un y0=1965 au lieu de 1975. L'erreur sur la correction est au pire de moins de 14%.
+    Ça mérite d'envoyer une version corrigée.
+    """
     out = {}
     out['WI1'] = {}
     out['WI2'] = {}
@@ -149,7 +152,7 @@ def ECOSYSTEMES():
         # Scenario weights
         wi = analysis.get_EC_scenario_index(ts)
 
-        # Compute flow at Trois-Rivières
+        # Compute flow at Trois-Rivières (Est-ce qu'on enlève le débit de la Nicolet? p 48 Morin, Bouchard)
         tsLSP = analysis.weight_EC_levels(analysis.EC_scen_Q['Trois-Rivieres'], wi)
 
         # Compute level at Lac St-Pierre
@@ -162,7 +165,59 @@ def ECOSYSTEMES():
     pickle.dump(out, open('../analysis/ecosystemes.pickle', 'wb'))
     return out
 
+#
+def TOURISME():
+    """Certains des positions des marinas correspondent aux batiments, et non au bassin de la marina.
+    J'ai contacté Stéphanie pour qu'on décide ce qu'on fait avec ca."""
 
+    # Interpolate the levels at the marinas
+    ECLpath = '../analysis/marinasECL_N.json'
+    if os.path.exists(ECLpath):
+        ECL = json.load(open(ECLpath))
+    else:
+        meta = GLSLio.marinas()
+        ECL = {}
+        for k, v in meta.items():
+            try:
+                ECL[k] = analysis.interpolate_EC_levels(*v).tolist()
+            except ValueError:
+                ECL[k] = None
+        json.dump(ECL, open(ECLpath, 'w'))
+
+def HYDRO():
+    """Scénario de débit a la sortie du lac Ontario."""
+
+    fn = '../deliverables/Scenarios_debit_lac_Ontario.xlsx'
+    EW = pd.ExcelWriter(fn)
+    tmp = {}
+
+    # 1
+    wd = FFio.FF_flow('ont', 'wd')
+    tmp['WI1'] = wd.reindex(wd.index.truncate(after=2069))
+
+    #2
+    qbc, q2 = analysis.scenario_2()
+
+    ECQ = np.array( analysis.EC_scen_Q['Beauharnois'] ) + np.array( analysis.EC_scen_Q['lesCedres'] )
+
+    # Scenario weights
+    for scen, ts in zip(("REF", "WI2"), analysis.scenario_2()):
+        wi = analysis.get_EC_scenario_index(ts)
+
+        # Compute flow at LaSalle
+        tmp[scen] = pd.Series(analysis.weight_EC_levels(ECQ, wi), ts.index)
+
+
+    for i, scen in enumerate(['REF', 'WI1', 'WI2']):
+        tmp[scen].to_frame(scen + ' m3s').to_excel(EW, scen)
+    EW.close()
+    return tmp
+
+#
+def plot_ww_wd_scenarios():
+    fig, ax = graphs.plot_FF_flow('ont')
+    fig.savefig('../figs/FF_wd_ww_scenarios_ontario.png')
+    plt.close()
 
 #
 def plot_aecom():

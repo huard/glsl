@@ -243,7 +243,8 @@ def get_flow_sorel(scen='bc'):
 
 def total_flow(site, scen='bc'):
     qs = {'srl':['stl', 'dpmi'],
-          'lsp':['stl', 'dpmi', 'rich', 'fran']}
+          'lsp':['stl', 'dpmi', 'rich', 'fran'],
+          'ont':['ont']}
 
     yo = offset[scen]
     Q = [FF_flow(q, scen, yo) for q in qs[site]]

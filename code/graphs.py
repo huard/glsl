@@ -9,7 +9,7 @@ import datetime as dt
 import GLSLutils as util
 import pickle
 
-import GLSLio
+import GLSLio, FFio, ECio, HYDATio, GLSLutils
 import analysis
 from imp import reload
 reload(GLSLio)
@@ -19,7 +19,7 @@ reload(util)
 mpl.rcParams['svg.fonttype'] = 'none'
 mpl.rcParams['font.family'] = 'Droid Sans'
 c = '#00425C'
-CC = dict(bc='Historique', ww='Chaud et humide', wd='Chaud et sec')
+CC = dict(bc='Référence', ww='Chaud et humide', wd='Chaud et sec')
 
 
 # see tricontour_smooth_delaunay.py
@@ -34,8 +34,8 @@ haxby = mpl.colors.LinearSegmentedColormap.from_list('haxby', _haxby[::-1])
 
 
 # Scenario colors
-cs1 = '#a24b11'
-cs2 = '#da0890'
+cs1 = '#124776'
+cs2 = '#8d0d20'
 cbc = '#333232'
 cobs= '#2b2929'
 
@@ -62,37 +62,113 @@ def strip(ax):
     ax.xaxis.tick_bottom()
 
 
-def scenarios(scens=[1,2]):
+def example_interpolation_debits():
+    Q = analysis.EC_scen_Q
+    x = Q['Sorel']
+    y = Q['LaSalle']
+    fig, ax = plt.subplots(figsize=(6,4))
+    fig.subplots_adjust(left=.15, bottom=.15, right=.9)
 
-    fig, ax = plt.subplots(figsize=(14,6))
-    fig.subplots_adjust(left=.06, right=.98)
-    lw = .5
+    ax.plot(x, y, '-', color=cbc, marker='o',  mfc='w', mec=cs1, lw=1.5, mew=1.5, label="Débits des huits scénarios du tableau 3")
+    ax.set_xlabel("Débits à Sorel [m³/s]")
+    ax.set_ylabel("Débits à LaSalle [m³/s]")
+    ax.tick_params(labelright=True)
 
-    ax2 = plt.twiny(ax)
+    xi = 8700
+    yi = np.interp(xi, x,y)
+    ax.plot([xi, xi], [ax.get_ylim()[0], yi], '--', color='gray', lw=1.5)
+    ax.plot(ax.get_xlim(), [yi, yi], '--', color='gray', lw=1.5)
 
-    if 1 in scens:
-        bc, ts = analysis.scenario_1()
+    ax.annotate("Débit reconstitué\nà Sorel", \
+        (xi, ax.get_ylim()[0]), (.05,.55), textcoords='axes fraction', \
+        arrowprops=dict(arrowstyle="->",  connectionstyle="arc3,rad=.4", color='gray'))
 
-        ax.plot_date(util.ordinal_qom(bc), bc.values, '-', color=cbc, label="Base Case", lw=lw)
-        ax2.plot_date(util.ordinal_qom(ts), ts.values, '-', color=cs1, lw=lw, label="Scenario #1")
+    ax.annotate("Débit correspondant à LaSalle", \
+        (ax.get_xlim()[1], yi), (.45,.38), textcoords='axes fraction', \
+        arrowprops=dict(arrowstyle="->",  connectionstyle="arc3,rad=-.2", color='gray'))
 
-        ax2.fill_between(util.ordinal_qom(ts), ts.values, bc.values, where=ts.values<bc.values, color=cs1, alpha=.5)
-        ax2.fill_between(util.ordinal_qom(ts), ts.values, bc.values, where=ts.values>bc.values, color=cbc, alpha=.5, label="Scenario #1")
-
-    if 2 in scens:
-        bc, ts = analysis.scenario_2()
-
-        ax.plot_date(util.ordinal_qom(bc), bc.values, '-', color=cbc, lw=lw)
-        ax2.plot_date(util.ordinal_qom(ts), ts.values, '-', color=cs2, lw=lw, label="Scenario #2")
-        ax2.fill_between(util.ordinal_qom(ts), ts.values, bc.values, where=ts.values<bc.values, color=cs2, alpha=.5)
-        ax2.fill_between(util.ordinal_qom(ts), ts.values, bc.values, where=ts.values>bc.values, color=cbc, alpha=.5, label="Scenario #2")
-
-    ax.set_ylabel('Débit à Sorel [m³/s]')
-
-    ax.legend(loc='upper left', frameon=False)
-    ax2.legend(loc='upper right', frameon=False)
-
+    ax.legend(fontsize='small', frameon=False, loc='upper left', numpoints=1)
+    plt.savefig('../figs/exemple_interpolation_debits.png')
     return fig
+
+def example_interpolation_niveaux():
+    "LaSalle"
+    Q = analysis.EC_scen_Q
+    x = Q['Sorel']
+    y = np.array([ 19.8039822 ,  20.2219321 ,  20.68718862,  21.12620549,
+        21.70513717,  22.12565828,  22.73689272,  23.16902584])
+
+    fig, ax = plt.subplots(figsize=(6,4))
+    fig.subplots_adjust(left=.15, bottom=.15, right=.9)
+
+    ax.plot(x, y, '-', color=cbc, marker='o',  mfc='w', mec=cs1, lw=1.5, mew=1.5, label="Niveaux des huit scénarios stationnaires\ninterpolés à Pointe-Claire")
+    ax.set_xlabel("Débits à Sorel [m³/s]")
+    ax.set_ylabel("Niveaux à la station de Pointe-Claire [m]")
+
+    ax.tick_params(labelright=True)
+
+    xi = 8700
+    yi = np.interp(xi, x,y)
+    ax.plot([xi, xi], [ax.get_ylim()[0], yi], '--', color='gray', lw=1.5)
+    ax.plot(ax.get_xlim(), [yi, yi], '--', color='gray', lw=1.5, )
+
+    ax.annotate("Débit reconstitué\nà Sorel", \
+        (xi, ax.get_ylim()[0]), (.05,.55), textcoords='axes fraction', \
+        arrowprops=dict(arrowstyle="->",  connectionstyle="arc3,rad=.4", color='gray'))
+
+    ax.annotate("Niveau correspondant\nà Pointe-Claire", \
+        (ax.get_xlim()[1], yi), (.55,.4), textcoords='axes fraction', \
+        arrowprops=dict(arrowstyle="->",  connectionstyle="arc3,rad=-.2", color='gray'))
+
+    plt.savefig('../figs/exemple_interpolation_niveaux.png')
+
+    ax.legend(fontsize='small', frameon=False, loc='upper left', numpoints=1)
+    plt.savefig('../figs/exemple_interpolation_niveaux.png')
+    return fig
+
+def showcase_scenarios(var='H'):
+
+    keys = {'Q':'Flow m3s', 'H':'Level m'}
+
+    Fbc, F1, F2 = analysis.scenarios_Sorel()
+
+
+    fig, ax = plt.subplots(nrows=1, figsize=(10,5))
+    fig.subplots_adjust(left=.06, right=.98)
+
+    axt = plt.twiny(ax)
+
+    a = .6
+    i = 0
+    name = keys[var]
+
+    Lbc = axt.plot_date(util.ordinal_qom(Fbc[name]), Fbc[name].values, '-', color=cbc, lw=.6, alpha=a,  label='Référence (1953–2012)')[0]
+    Ls1 = ax.plot_date(util.ordinal_qom(F1[name]), F1[name].values, '-', color=cs1, lw=1., alpha=a, label='What-if #1 (2040–2069)')[0]
+    Ls2 = ax.plot_date(util.ordinal_qom(F2[name]), F2[name].values, '-', color=cs2, lw=1., alpha=a, label='What-if #2 (2010–2069)')[0]
+    ax.legend((Lbc, Ls1, Ls2), (Lbc.get_label(), Ls1.get_label(), Ls2.get_label()), loc='upper right', frameon=False, ncol=3, fontsize='small')
+
+    if var == 'H':
+        ax.set_ylabel('Niveau à Sorel [m]')
+    elif var == 'Q':
+        ax.set_ylabel('Débit à Sorel [m³/s]')
+
+
+    if 0:
+        L = HYDATio.get_hydat('02OJ022', 'H') #H
+        LQ = GLSLutils.group_qom(L).mean()
+        LQ.index.names = ["Year", "QTM"]
+        axest[1].plot_date(util.ordinal_qom(LQ), LQ.values, '-', color='green', lw=1.)
+
+    if 1:
+        ax.set_xlim(dt.datetime(2050,1,1), dt.datetime(2065,1,1))
+        axt.set_xlim(dt.datetime(1993,1,1), dt.datetime(2008,1,1))
+
+    plt.setp(ax.get_xticklabels(), color=cs2)
+    plt.setp(axt.get_xticklabels(), color=cbc)
+
+    fig.savefig('../figs/resume_scenarios_zoom.png')
+
+
 
 def scenarios(data):
 
@@ -163,8 +239,50 @@ def NBS_qm_correction(n=10):
     axes[-1].set_xlabel('Percentile')
     plt.setp(axes, ylabel='ΔNBS')
 
+def NBS_cycle_GL(stat=np.mean):
+    """Plot the annual NBS cycle."""
+    import ndict
 
-def NBS_cycle(stat=np.mean):
+    months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+    res = ndict.NestedDict()
+    for m in months:
+        res[m] = GLSLio.NBS(m, stat)
+        wa = GLSLio.basins_weighted_NBS_average(res[m])
+        res[m]['lacgreat lakes'] = wa
+        res[m].pop('lacMHG')
+
+    nbs = ndict.NestedDict()
+    for l in res.keylevel(1):
+        for a in res.keylevel(2):
+            nbs[l][a] = [res[m][l][a] for m in months]
+
+
+    fig, axes = plt.subplots(2, figsize=(8,6))
+    fig.subplots_adjust(right=.97)
+
+    lake = 'lacgreat lakes'; i=0
+    ax = axes[0]
+    ax.set_color_cycle(plt.cm.jet(np.linspace(0,1,10)))
+    for (r,f) in analysis.aliases.items():
+        ax.plot(nbs[lake][r], marker='o', lw=1, mec='none', label=f)
+    ax.plot(nbs[lake]['obs'], ms=10, lw=2, color='#272727', label='Obs.'    )
+    ax.set_ylabel('NBS (Référence) mm/j')
+
+    ax = axes[1]
+    ax.set_color_cycle(plt.cm.jet(np.linspace(0,1,10)))
+    for (r,f) in analysis.aliases.items():
+        ax.plot(np.array(nbs[lake][f]) - np.array(nbs[lake][r]), marker='o', lw=1, mec='none', label='{0}/{1}'.format(r,f))
+    ax.axhline(0, color='gray', zorder=-1)
+    #ax.text(.02, .7, 'Great Lakes CC', ha='left', va='baseline', size='large', weight='bold', color='#272727', transform=ax.transAxes)
+    ax.set_xlabel('Mois')
+    ax.set_ylabel('ΔNBS')
+
+
+    ax.legend(loc='upper right', fontsize='small', frameon=False, numpoints=1, ncol=5)
+
+    fig.savefig('../figs/NBS_annual_cycle_full_GL.png')
+
+def NBS_cycle_full(stat=np.mean):
     """Plot the annual NBS cycle."""
     import ndict
 
@@ -214,36 +332,74 @@ def NBS_cycle(stat=np.mean):
     fig.savefig('../figs/NBS_annual_cycle_full.png')
 
 def scenario_2():
-    y, cc = analysis.flow_cc()
+    bc, s2 = analysis.scenario_2()
 
-    fig, ax = plt.subplots(figsize=(14,6))
-    fig.subplots_adjust(left=.06, right=.98)
-    ax.plot_date([x.toordinal() for x in GLSLio.qom2date(y.index.to_series().values)], y.values, 'k-', label='Débits reconstitués à Sorel')
+    fig, ax = plt.subplots(figsize=(10,4.5))
+    fig.subplots_adjust(left=.1, right=.98)
+    axt = plt.twiny()
 
-    ax2 = plt.twiny()
 
-    # Compare with scenario 1
-    ts = analysis.get_flow_sorel('wd')[:30*48]
-    l0, l1 = ts.index.levels
-    l0 += 2039
-
-    ts.index.set_levels([l0, l1], True)
-
-    ax2.plot_date( [x.toordinal() for x in GLSLio.qom2date(ts.index.to_series().values)], ts.values, '-', color='blue', label='Débits scénario #1', alpha=.7, zorder=-1)
+    Lbc = axt.plot_date(util.ordinal_qom(bc), bc.values, '-', color=cbc, lw=.6, alpha=.9,  label='Débits reconstitués à Sorel (1953–2012)')[0]
 
     # Scenario 2
-    ax2.plot_date( [x.toordinal() for x in GLSLio.qom2date(cc.index.to_series().values)], cc.values, '-', color='orange', label='Débits scénario #2', alpha=.7)
+    Ls2 = ax.plot_date( util.ordinal_qom(s2), s2.values, '-', color=cs2, lw=1., label='Débits scénario #2 (2010–2069)')[0]
 
     ax.set_ylabel('Débit à Sorel [m³/s]')
 
-    ax.legend(loc='upper left', frameon=False)
-    ax2.legend(loc='upper right', frameon=False)
+    ax.legend((Lbc, Ls2), (Lbc.get_label(), Ls2.get_label()), loc='upper right', frameon=False)
+
+    ax.set_xlim(dt.datetime(2009,6,1).toordinal(), dt.datetime(2070,6,1).toordinal())
+    axt.set_xlim(dt.datetime(1952,6,1).toordinal(), dt.datetime(2013,6,1).toordinal())
+    plt.setp(ax.get_xticklabels(), color=cs2)
+    plt.setp(axt.get_xticklabels(), color=cbc)
 
     fig.savefig('../figs/scenario2.png')
 
 
-def NBS_cycle_model_average():
+def explain_scenario_2():
+    r, f = analysis.NBS_delta()
+    bc, s2 = analysis.scenario_2()
+
     months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+
+    fig, axes = plt.subplots(nrows=2)
+    fig.subplots_adjust(top=.87, hspace=.3, right=.89, left=.1)
+
+    # Sorel
+    y = bc.groupby(level=1).mean()
+    x = np.linspace(0,11, 48)
+
+    axes[0].plot(r, label="Période de référence", color='b', lw=2)
+    axes[0].plot(f, label="Période future", color='orange', lw=2)
+    axes[0].set_ylabel('NBS [mm/j]')
+    axes[0].legend(loc='lower left', bbox_to_anchor=(0,1), frameon=False, fontsize='small', title="Cycle NBS de la simulation afa/afd")
+    ax = plt.twinx(axes[0])
+    ax.plot(x, y, color='k', lw=2, label="Débit à Sorel [m³/s]")
+    ax.set_ylabel('Débit à Sorel [m³/s]')
+    ax.legend(loc='lower right', bbox_to_anchor=(1,1), frameon=False, fontsize='small')
+
+    axes[1].plot(f-r, label="Δ NBS", color='k', lw=2)
+    axes[1].axhline(0, color='gray')
+    #cc = np.roll(np.interp(x, range(12), (f-r)/r.ptp()) * y.ptp(), 2)
+    cc = s2.groupby(level=1).mean()
+    ax2 = plt.twinx(axes[1])
+    ax2.plot(x, cc-y, 'r-', lw=2, label='Δ Débit à Sorel')
+
+
+    plt.setp(axes, xticks=range(12), xlim=(0,11))
+    axes[0].set_xticklabels([])
+    axes[1].set_xticklabels([m.capitalize() for m in months])
+    axes[1].legend(loc='lower left', bbox_to_anchor=(0,1), frameon=False, fontsize='small')
+    ax2.legend(loc='lower right', bbox_to_anchor=(1,1), frameon=False, fontsize='small')
+    axes[1].set_ylabel('Δ NBS [mm/j]')
+    ax2.set_ylabel('Δ Débit [m³/s]')
+    axes[1].set_xlabel("Mois")
+
+    fig.savefig('../figs/explanation_scenario_2.png')
+    return fig
+    #
+def NBS_cycle_model_average():
+
     ref = {}; fut = {}
     for m in months:
         nbs = GLSLio.NBS(m)
@@ -288,8 +444,7 @@ def NBS_cycle_model_average():
 
     fig.savefig('../figs/NBS_annual_cycle.png')
     return fig
-
-
+#
 def NBS_scatter(freq='annual', stat=np.mean):
     """Plot the future vs reference NBS for each lake.
     """
@@ -328,11 +483,7 @@ def NBS_scatter(freq='annual', stat=np.mean):
     for ax in fig.axes:
         ax.set_autoscale_on(False)
         ax.plot([-10,10], [-10,10], color='grey', alpha=.5, lw=.5)
-
-
-
-
-
+#
 def plot_FF_flow(site):
     """Plot time series of the flow.
     """
@@ -357,63 +508,24 @@ def plot_FF_flow(site):
 
     # QOM series
     for scen in ['bc', 'ww', 'wd']:
-        ts = GLSLio.FF_flow(site, scen, yo)[:29*48]
-        ts_d = [d.toordinal() for d in GLSLio.qom2date(ts.index.to_series().values)]
+        ts = FFio.FF_flow(site, scen, yo)[:29*48]
 
         # Annual min
         g = ts.groupby(level=0)
         tm = g.min()
         itm = g.idxmin()
-        tm_d = [d.toordinal() for d in GLSLio.qom2date(itm)]
+        tm_d = [d.toordinal() for d in util.qom2date(itm)]
 
 
         if scen == 'bc':
-            ax.plot_date(ts_d, ts.values, '-', color='#393737', alpha=.5)
+            ax.plot_date(util.ordinal_qom(ts), ts.values, '-', color='#393737', alpha=.5)
 
         ax.plot_date(tm_d, tm.values, '-', color=c[scen], marker='o',  mfc='w', mec=c[scen], label=CC[scen], lw=1.5, mew=1.5)
 
     leg = ax.legend(loc='upper left', frameon=False, numpoints=1, title='Minimum annuel', fontsize='small')
     ax.set_ylabel("Débit [m³/s]")
 
-
     return fig, ax
-
-def aecom():
-    """Plot scenarios and observations at Pointe-Claire.
-    """
-    import scripts
-    from matplotlib.transforms import offset_copy
-
-    D = pickle.load(open('../analysis/aecom.pickle', 'rb'))
-
-    a = .8;
-    lw = 1.5
-    fig, axes = plt.subplots(nrows=2, figsize=(14,11))
-    fig.subplots_adjust(left=.05, right=.97)
-
-    obs = axes[0].plot_date(util.ordinal_qom(D['obs']), D['obs'].values, '-', color=cobs, lw=lw, alpha=a, label="Observations")[0]
-    axes[0].legend(frameon=False, loc="upper right")
-    axes[0].xaxis.tick_top()
-
-    ax2 = plt.twiny(axes[1])
-    D['WI1']['BC']['Level m']
-    bc = ax2.plot_date(util.ordinal_qom(), D['bc']['Level m'].values, '-', lw=lw, color=cbc, alpha=a)[0]
-
-
-    wd = axes[1].plot_date(util.ordinal_qom(D['wd']['Level m']), D['wd']['Level m'].values, '-', lw=lw, color=cs1, alpha=a)[0]
-
-    plt.setp(axes, 'ylabel', 'Niveau [m]')
-    axes[1].legend((bc, wd), ("Scénario de référence", "Scénario #1 - Chaud et sec"), frameon=False, loc="upper right")
-
-    plt.setp(axes[0].get_xticklabels(), color=cobs)
-    plt.setp(axes[1].get_xticklabels(), color=cs1)
-    plt.setp(ax2.get_xticklabels(), color=cbc)
-
-    axes[0].text(0, 1, "Pointe-Claire", fontsize=34, weight='bold', color=cobs, alpha=.5, transform=offset_copy(axes[0].transAxes, x=0, y=30, units='dots'))
-
-    fig.savefig('../figs/Pointe-Claire.png')
-    return fig
-
 
 
 
@@ -737,7 +849,7 @@ def plot_mesh():
     return fig, ax
 
 
-def plot_depth_map(scen, X=None, Y=None):
+def plot_depth_map(scen, pts={}, inset=True):
     from scipy.spatial import Delaunay
     import matplotlib.transforms as mtransforms
     from mpl_toolkits.axes_grid1.inset_locator import zoomed_inset_axes
@@ -749,7 +861,7 @@ def plot_depth_map(scen, X=None, Y=None):
 
 
     #m = basemap.Basemap(projection='tmerc', resolution='c', lat_0=45.8, lon_0=-73.5, k_0=0.99990, ellps='GRS80', width=170000, height=170000)
-    proj = GLSLio.MTM8()
+    proj = ECio.MTM8()
     #m.drawcoastlines()
     #m.drawcountries()
     #m.drawrivers()
@@ -772,16 +884,24 @@ def plot_depth_map(scen, X=None, Y=None):
     if cp:
         for key, c in zip(analysis.CP['sites'], analysis.CP['coords']):
             x,y = proj(*c)
-            plt.plot([x,], [y,], 'o', mfc='w', mec='b', ms=10, label=key, zorder=1)
+            ax.plot([x,], [y,], 'o', mfc='w', mec='b', ms=10, label=key, zorder=1, transform=AR + ax.transData)
 
         plt.legend()
 
-    pts = np.hstack(GLSLio.EC_pts().values())
-    D = np.hstack(GLSLio.EC_depth(scen=scen).values())
+    if pts:
+        for key, c in pts.items():
+            x,y = proj(*c)
+            ax.plot([x,], [y,], '*', mfc='k', mec='none', ms=4, label=key, zorder=1, transform=AR + ax.transData)
+
+        #ax.legend(fontsize='small')
+
+
+    pts = np.hstack(ECio.EC_pts().values())
+    D = np.hstack(ECio.EC_depth(scen=scen).values())
 
     X, Y, Z = pts
     D = np.ma.masked_less_equal(D, 0)
-    S = ax.scatter(X, Y, c=D, s=.3, linewidths=0, transform=AR + ax.transData, cmap=cm, vmax=45, vmin=1e-2, norm=mpl.colors.LogNorm())
+    S = ax.scatter(X, Y, c=D, s=1, linewidths=0, transform=AR + ax.transData, cmap=cm, vmax=45, vmin=1e-2, norm=mpl.colors.LogNorm())
 
 
 
@@ -801,17 +921,17 @@ def plot_depth_map(scen, X=None, Y=None):
     cb = plt.colorbar(S, cax=cbax, extend='max', orientation='horizontal')
     cb.set_label('Profondeur [m]')
     #cb.formatter(ScalarFormatter(cb.ticks)
+    if inset:
+        axins = zoomed_inset_axes(ax, 3.5, loc=4, borderpad=0.3) # zoom =
+        axins.scatter(X, Y, c=D, s=2, cmap=cm, vmax=45, vmin=1e-2, linewidths=0, transform=AR + axins.transData, norm=mpl.colors.LogNorm())
 
-    axins = zoomed_inset_axes(ax, 3.5, loc=4, borderpad=0.3) # zoom =
-    axins.scatter(X, Y, c=D, s=2, cmap=cm, vmax=45, vmin=1e-2, linewidths=0, transform=AR + axins.transData, norm=mpl.colors.LogNorm())
+        # sub region of the original image
+        x1, y1 = 2475000, 4482000
+        axins.set_xlim(x1, x1+2.2E4)
+        axins.set_ylim(y1, y1+1.1E4)
 
-    # sub region of the original image
-    x1, y1 = 2475000, 4482000
-    axins.set_xlim(x1, x1+2.2E4)
-    axins.set_ylim(y1, y1+1.1E4)
-
-    mark_inset(ax, axins, loc1=1, loc2=2, fc="none", ec="0.7")
-    axins.set_xticks([]); axins.set_yticks([])
+        mark_inset(ax, axins, loc1=1, loc2=2, fc="none", ec="0.7")
+        axins.set_xticks([]); axins.set_yticks([])
 
     return fig, ax
 
