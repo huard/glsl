@@ -36,17 +36,21 @@ EC_scen_Q = {'Sorel':[5000, 6500, 8000, 9500, 12000, 14500, 17500, 20500],
 EC_scen_L = {'mtl': [4.29, 4.95, 5.61, 6.30, 7.19, 7.99, 8.8, 9.82],
              'var':[3.48, 4.2, 4.95, 5.57, 6.37, 7.2, 7.98, 9.06],
              'srl': [2.96, 3.56, 4.17, 4.74, 5.42, 6.22, 6.92, 8.01],
-             'trois': [2.52, 2.95, 3.55, 4.06, 4.69, 5.53, 6.16, 7.24]}
+             'trois': [2.52, 2.95, 3.55, 4.06, 4.69, 5.53, 6.16, 7.24],}
+#             'lsp': [ 2.765531,  3.076017,  3.779904,  4.375879,  5.096382,  6.007973,
+#        6.734745,  7.827078]} # LSP calculé à partir du modèle 2D, et non du tableau.
 
 # Temps de retour
 EC_scen_T = [10000, 70, 3, None, None, 2, 16, 7000]
 """ --- """
 
 
-# Points de contrôle (F&F) - Positions des stations de niveau d'EC
-CP = dict(sites = ('mtl', 'var', 'srl', 'lsp', 'trois'),
-          coords = ((-73.5525, 45.5035), (-73.443667, 45.684333), (-73.115667, 46.047167), (-72.8955, 46.194833), (-72.539167, 46.3405 )),
-          names = ('Jetée #1', 'Varennes', 'Sorel', 'Lac St-Pierre', 'Trois-Rivières'))
+# Points de contrôle (F&F) - Positions des stations de niveau d'EC 
+CP = dict(sites = ('mtl', 'var', 'srl', 'trois'),
+          coords = ((-73.5525, 45.5035), (-73.443667, 45.684333), (-73.115667, 46.047167),  (-72.539167, 46.3405 )),
+          names = ('Jetée #1', 'Varennes', 'Sorel', 'Trois-Rivières'))
+
+# 'Lac St-Pierre', (-72.8955, 46.194833), 'lsp',
 
 gcms = {'CGCM2.3': (('afp',), ('afq',)),
         'CGCM3.1': (('aey', 'aez', 'afa', 'aet', 'aev'),
@@ -465,7 +469,7 @@ def EC_interpolation(lon, lat, flow_at_sorel):
     w = 1.-np.mod(wi,1)
     return levels[0] * w + levels[1]*(1-w)
 
-def interpolate_ff_levels(lon, lat, scen='bc'):
+def interpolate_ff_levels(lon, lat, scen='bc', L=None):
     """For a given point, compute the value interpolated from the Fan &
     Fay levels at the control points (Mtl, Sorel, Varennes and
     Trois-Rivieres) and improve the interpolation using the 2D model
@@ -509,7 +513,7 @@ def interpolate_ff_levels(lon, lat, scen='bc'):
     # ---------------------------------
 
     # 1.1 Get the upstream and downstream stations from point
-    P = GLSLio.MTM8()
+    P = ECio.MTM8()
     x, y = P(lon, lat)
 
     dist = []
@@ -539,13 +543,17 @@ def interpolate_ff_levels(lon, lat, scen='bc'):
 
     # 2.1 Compute streamflow at Sorel
     FS = FFio.get_flow_sorel(scen)
+    FS = FS.reindex(FS.index.truncate(after=FFio.offset[scen]+29))
 
     # 2.2 Identify the scenarios above and below the Sorel streamflow
     wi = get_EC_scenario_index(FS)
     wi[FS.isnull().values] = 0
 
     # 2.3 Interpolate the scenario level at the point of interest
-    L = interpolate_EC_levels(lon, lat)
+    L = L or interpolate_EC_levels(lon, lat)
+
+    if dom == 'lsl': #Because no reference level on the left side of the domain. 
+        return pd.Series(weight_EC_levels(L, wi), FS.index)
 
     # 2.4 Get the levels at the upstream and downstream control points for all 8 scenarios and interpolate at the point of interest
     EC_L = Iw * np.array(EC_scen_L[upstream]) + (1-Iw) * np.array(EC_scen_L[downstream])

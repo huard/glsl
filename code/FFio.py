@@ -236,7 +236,7 @@ def get_flow_sorel(scen='bc'):
 
     OBSOLETE, see total_flow
     """
-    qs = 'stl', 'dpmi', # Is there something else, do we need to scale those ?
+    qs = 'stl', 'dpmi'
     yo = offset[scen]
     Q = [FF_flow(q, scen, yo)for q in qs]
     return sum(Q)
@@ -269,6 +269,6 @@ def PCL(scen='bc'):
     St. Lawrence Regulation Office, Meteorological Service of Canada - Ontario
     Region, Environment Canada, Cornwall ON.
     """
-    q = FF_flow('stl', scen)
-    f = FF_K('pcl', scen)
+    q = FF_flow('stl', scen, offset[scen])
+    f = FF_K('pcl', scen, offset[scen])
     return 16.57 + (f*q/604.)**.58

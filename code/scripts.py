@@ -169,13 +169,14 @@ def ECOSYSTEMES():
 def TOURISME():
     """Certains des positions des marinas correspondent aux batiments, et non au bassin de la marina.
     J'ai contacté Stéphanie pour qu'on décide ce qu'on fait avec ca."""
-
+    meta = GLSLio.marinas()
+    
     # Interpolate the levels at the marinas
     ECLpath = '../analysis/marinasECL_N.json'
     if os.path.exists(ECLpath):
         ECL = json.load(open(ECLpath))
     else:
-        meta = GLSLio.marinas()
+    
         ECL = {}
         for k, v in meta.items():
             try:
@@ -183,35 +184,108 @@ def TOURISME():
             except ValueError:
                 ECL[k] = None
         json.dump(ECL, open(ECLpath, 'w'))
-
-def HYDRO():
-    """Scénario de débit a la sortie du lac Ontario."""
-
-    fn = '../deliverables/Scenarios_debit_lac_Ontario.xlsx'
-    EW = pd.ExcelWriter(fn)
-    tmp = {}
-
-    # 1
-    wd = FFio.FF_flow('ont', 'wd')
-    tmp['WI1'] = wd.reindex(wd.index.truncate(after=2069))
-
-    #2
-    qbc, q2 = analysis.scenario_2()
-
-    ECQ = np.array( analysis.EC_scen_Q['Beauharnois'] ) + np.array( analysis.EC_scen_Q['lesCedres'] )
-
-    # Scenario weights
+        
+    out = {'REF':{} ,'WI1':{}, 'WI2':{}}
+    
+    # Scenario #1
+    for (key, L) in ECL.items():
+        if L is not None:
+            lon, lat = meta[key]
+            out['WI1'][key] = analysis.interpolate_ff_levels(lon, lat, 'wd', L)
+            
+    # Scenario #2
     for scen, ts in zip(("REF", "WI2"), analysis.scenario_2()):
+        for (key, L) in ECL.items():
+            if L is not None:
+                # Scenario weights
+                wi = analysis.get_EC_scenario_index(ts)
+    
+                # Compute levels
+                out[scen][key] = pd.Series(analysis.weight_EC_levels(L, wi), ts.index)
+
+    for (key, L) in ECL.items():
+        if L is not None:
+            fn = '../deliverables/Tourisme/Scenarios_niveaux_{0}_IGLD85.xlsx'.format(key)
+            EW = pd.ExcelWriter(fn)
+            for i, scen in enumerate(['REF', 'WI1', 'WI2']):
+                out[scen][key].to_frame(scen + ' m').to_excel(EW, scen)
+            EW.close()
+
+    return out
+            
+    
+    
+
+def FONCIER():
+    """Niveaux au Lac St-Louis (Pointe-Claire)"""
+    fn = '../deliverables/Scenarios_niveaux_Pointe-Claire_02OA039.xlsx'
+    EW = pd.ExcelWriter(fn)
+    out = {}
+
+    # Observations at Pointe-Claire
+    s = '02OA039'
+
+    M = HYDATio.get_station_meta(s)
+    lat, lon = M['LATITUDE'], M['LONGITUDE']
+
+    if 0: #OBS
+        L = HYDATio.get_hydat(s, 'H')
+        LQ = GLSLutils.group_qom(L).mean()
+        LQ.index.names = ["Year", "QTM"]
+        F = LQ.to_frame('Level m')
+        out['obs'] = F
+
+    # What-if scenario #1
+    wd = FFio.PCL('wd')
+    out['WI1'] = wd.reindex(wd.index.truncate(after=2068))
+
+    # What-if scenario #2 at Sorel
+    ECL = analysis.interpolate_EC_levels(lon, lat)
+    for scen, ts in zip(("REF", "WI2"), analysis.scenario_2()):
+
+        # Scenario weights
         wi = analysis.get_EC_scenario_index(ts)
 
-        # Compute flow at LaSalle
-        tmp[scen] = pd.Series(analysis.weight_EC_levels(ECQ, wi), ts.index)
-
+        # Compute level at Pointe-Claire
+        out[scen] = pd.Series(analysis.weight_EC_levels(ECL, wi), ts.index)
 
     for i, scen in enumerate(['REF', 'WI1', 'WI2']):
-        tmp[scen].to_frame(scen + ' m3s').to_excel(EW, scen)
+        out[scen].to_frame(scen + ' m').to_excel(EW, scen)
     EW.close()
-    return tmp
+
+    return out
+
+
+
+def HYDRO():
+    """Scénario de débit pour Beauharnois et Les Cedres."""
+
+    def do(site):
+        fn = '../deliverables/Scenarios_debit_lac_Ontario.xlsx'
+        EW = pd.ExcelWriter(fn)
+        tmp = {}
+    
+        # 1
+        wd = FFio.FF_flow('ont', 'wd')
+        tmp['WI1'] = wd.reindex(wd.index.truncate(after=2069))
+    
+        #2
+        qbc, q2 = analysis.scenario_2()
+    
+        ECQ = np.array( analysis.EC_scen_Q['Beauharnois'] ) + np.array( analysis.EC_scen_Q['lesCedres'] )
+    
+        # Scenario weights
+        for scen, ts in zip(("REF", "WI2"), analysis.scenario_2()):
+            wi = analysis.get_EC_scenario_index(ts)
+    
+            # Compute flow at LaSalle
+            tmp[scen] = pd.Series(analysis.weight_EC_levels(ECQ, wi), ts.index)
+    
+    
+        for i, scen in enumerate(['REF', 'WI1', 'WI2']):
+            tmp[scen].to_frame(scen + ' m3s').to_excel(EW, scen)
+        EW.close()
+        return tmp
 
 #
 def plot_ww_wd_scenarios():
