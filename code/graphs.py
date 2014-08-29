@@ -32,6 +32,7 @@ _haxby=np.array([[ 37, 57, 175], [40, 127, 251], [50, 190, 255], [106, 235, 255]
     [255, 161, 68], [255, 186, 133], [255, 255, 255]])/255.;
 haxby = mpl.colors.LinearSegmentedColormap.from_list('haxby', _haxby[::-1])
 
+months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
 
 # Scenario colors
 cs1 = '#124776'
@@ -257,27 +258,29 @@ def NBS_cycle_GL(stat=np.mean):
             nbs[l][a] = [res[m][l][a] for m in months]
 
 
-    fig, axes = plt.subplots(2, figsize=(8,6))
-    fig.subplots_adjust(right=.97)
+    fig, axes = plt.subplots(2, figsize=(8,6), sharex=True)
+    fig.subplots_adjust(right=.97, left=.09, bottom=.09, hspace=.1, top=.96)
+    x = range(12)
 
     lake = 'lacgreat lakes'; i=0
     ax = axes[0]
     ax.set_color_cycle(plt.cm.jet(np.linspace(0,1,10)))
     for (r,f) in analysis.aliases.items():
-        ax.plot(nbs[lake][r], marker='o', lw=1, mec='none', label=f)
-    ax.plot(nbs[lake]['obs'], ms=10, lw=2, color='#272727', label='Obs.'    )
+        ax.plot(x, nbs[lake][r], marker='o', lw=1, mec='none', label=f)
+    ax.plot(x, nbs[lake]['obs'], ms=10, lw=2, color='#272727', label='Obs.'    )
     ax.set_ylabel('NBS (Référence) mm/j')
 
     ax = axes[1]
     ax.set_color_cycle(plt.cm.jet(np.linspace(0,1,10)))
     for (r,f) in analysis.aliases.items():
-        ax.plot(np.array(nbs[lake][f]) - np.array(nbs[lake][r]), marker='o', lw=1, mec='none', label='{0}/{1}'.format(r,f))
+        ax.plot(x, np.array(nbs[lake][f]) - np.array(nbs[lake][r]), marker='o', lw=1, mec='none', label='{0}/{1}'.format(r,f))
     ax.axhline(0, color='gray', zorder=-1)
     #ax.text(.02, .7, 'Great Lakes CC', ha='left', va='baseline', size='large', weight='bold', color='#272727', transform=ax.transAxes)
     ax.set_xlabel('Mois')
     ax.set_ylabel('ΔNBS')
-
-
+    ax.set_xticks(x)
+    ax.set_xticklabels([m.capitalize() for m in months])
+    ax.set_xlim(-.5, 11.5)
     ax.legend(loc='upper right', fontsize='small', frameon=False, numpoints=1, ncol=5)
 
     fig.savefig('../figs/NBS_annual_cycle_full_GL.png')
@@ -360,8 +363,6 @@ def explain_scenario_2():
     r, f = analysis.NBS_delta()
     bc, s2 = analysis.scenario_2()
 
-    months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
-
     fig, axes = plt.subplots(nrows=2)
     fig.subplots_adjust(top=.87, hspace=.3, right=.89, left=.1)
 
@@ -397,6 +398,48 @@ def explain_scenario_2():
 
     fig.savefig('../figs/explanation_scenario_2.png')
     return fig
+    #
+def synthesis_scenarios(R, S1, S2):
+    var = 'Level m'
+    r = R[var].ix[1960:1989]
+    s1 = S1[var]
+    s2 = S2[var].ix[2040:2069]
+
+    rac = r.groupby(level=1).mean()
+    s1ac = s1.groupby(level=1).mean()
+    s2ac = s2.groupby(level=1).mean()
+
+    x = np.linspace(0,11, 48)
+
+    fig, ax = plt.subplots(1,1, figsize=(6.75, 4))
+    lw = 2
+    ax.plot(x, rac, '-', color=cbc, lw=lw, label="Référence")
+    ax.plot(x, s1ac, '-', color=cs1, lw=lw, label="Scénario #1")
+    ax.plot(x, s2ac, '-', color=cs2, lw=lw, label="Scénario #2")
+
+    if 1:
+        rq = r.groupby(level=1).quantile([.1, .9])
+        s1q = s1.groupby(level=1).quantile([.1, .9])
+        s2q = s2.groupby(level=1).quantile([.1, .9])
+
+        ax.fill_between(x, rq.ix[:,.1], rq.ix[:,.9], edgecolor=cbc, lw=.5, facecolor=cbc, alpha=.05, clip_on=True)
+        ax.plot(x, s1q.ix[:,.1], color=cs1, lw=.5)
+        ax.plot(x, s1q.ix[:,.9], color=cs1, lw=.5)
+        ax.plot(x, s2q.ix[:,.1], color=cs2, lw=.5)
+        ax.plot(x, s2q.ix[:,.9], color=cs2, lw=.5)
+
+
+    strip(ax)
+    plt.setp(ax, xticks=range(12), xlim=(0,11))
+    ax.set_xticklabels([m.capitalize() for m in months])
+    ax.set_ylabel('Niveau [m]')
+    ax.legend(loc='upper right', frameon=False, fontsize='small')
+
+    fig.savefig('../rapport/figs/synthese_scenarios.png', bbox_inches='tight', dpi=300)
+    return fig
+
+
+
     #
 def NBS_cycle_model_average():
 
@@ -849,7 +892,7 @@ def plot_mesh():
     return fig, ax
 
 
-def plot_depth_map(scen, pts={}, inset=True):
+def plot_depth_map(scen, pts={}, inset=True, ax=None):
     from scipy.spatial import Delaunay
     import matplotlib.transforms as mtransforms
     from mpl_toolkits.axes_grid1.inset_locator import zoomed_inset_axes
@@ -866,10 +909,15 @@ def plot_depth_map(scen, pts={}, inset=True):
     #m.drawcountries()
     #m.drawrivers()
 
-    fig, ax = plt.subplots(1,1,figsize=(8,4))
-    cbax = fig.add_axes([.1,.9,.45,.04])
-    fig.set_facecolor('w')
-    fig.subplots_adjust(left=.01, right=.99, bottom=.01, top=.99)
+    if ax is None:
+        fig, ax = plt.subplots(1,1,figsize=(8,4))
+        cbax = fig.add_axes([.1,.9,.45,.04])
+        fig.set_facecolor('w')
+        fig.subplots_adjust(left=.01, right=.99, bottom=.01, top=.99)
+        singlefig = True
+    else:
+        fig = ax.get_figure()
+        singlefig=False
 
     AR = mtransforms.Affine2D()
     AR.rotate_deg(-25)
@@ -918,9 +966,11 @@ def plot_depth_map(scen, pts={}, inset=True):
         #plt.tricontourf(T, d, 20, mask=ma, vmin=0, vmax=20, cmap=cm)
         #plt.tripcolor(T, d, vmin=0, vmax=20, cmap=cm)
 
-    cb = plt.colorbar(S, cax=cbax, extend='max', orientation='horizontal')
-    cb.set_label('Profondeur [m]')
-    #cb.formatter(ScalarFormatter(cb.ticks)
+    if singlefig:
+        cb = plt.colorbar(S, cax=cbax, extend='max', orientation='horizontal')
+        cb.set_label('Profondeur [m]')
+
+
     if inset:
         axins = zoomed_inset_axes(ax, 3.5, loc=4, borderpad=0.3) # zoom =
         axins.scatter(X, Y, c=D, s=2, cmap=cm, vmax=45, vmin=1e-2, linewidths=0, transform=AR + axins.transData, norm=mpl.colors.LogNorm())
@@ -934,6 +984,21 @@ def plot_depth_map(scen, pts={}, inset=True):
         axins.set_xticks([]); axins.set_yticks([])
 
     return fig, ax
+
+def show_all_depths():
+    fig, axes = plt.subplots(4,2, figsize=(6.5,9))
+    fig.subplots_adjust(wspace=0.0, hspace=0.0, left=0.0, right=1, top=1, bottom=.08)
+    cbax = fig.add_axes([.1,.06,.8,.025])
+    Q = analysis.EC_scen_Q['Sorel']
+
+    for i in range(8):
+        f, ax = plot_depth_map(i+1, inset=False, ax=axes.flat[i])
+        axes.flat[i].text(0.1, .9, "#{0}: {1}m³/s".format(i+1, Q[i]), ha='left', va='top', fontsize=14, fontweight='bold', alpha=.8, transform=axes.flat[i].transAxes)
+
+    cb = plt.colorbar(ax.collections[0], cax=cbax, extend='max', orientation='horizontal')
+    cb.set_label('Profondeur [m]')
+
+    return fig
 
 
 def plot_map(bg=False):

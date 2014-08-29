@@ -45,7 +45,7 @@ EC_scen_T = [10000, 70, 3, None, None, 2, 16, 7000]
 """ --- """
 
 
-# Points de contrôle (F&F) - Positions des stations de niveau d'EC 
+# Points de contrôle (F&F) - Positions des stations de niveau d'EC
 CP = dict(sites = ('mtl', 'var', 'srl', 'trois'),
           coords = ((-73.5525, 45.5035), (-73.443667, 45.684333), (-73.115667, 46.047167),  (-72.539167, 46.3405 )),
           names = ('Jetée #1', 'Varennes', 'Sorel', 'Trois-Rivières'))
@@ -162,7 +162,36 @@ def apply_delta(ts, delta, y0=1975, y1=2055):
     cc = delta[q-1] * f
     return ts + cc
 
+def synthesis_table(R, S1, S2):
+    from docx import Document
+    import locale
+    #locale.setlocale(locale.LC_ALL, 'fr_CA')
 
+    import calendar
+
+    var = 'Level m'
+    r = R[var].ix[1960:1989]
+    s1 = S1[var]
+    s2 = S2[var].ix[2040:2069]
+
+    rac = r.groupby(level=1).mean()
+    s1ac = s1.groupby(level=1).mean()
+    s2ac = s2.groupby(level=1).mean()
+
+    rmm = rac.reshape(12,4).mean(1)
+    s1mm = s1ac.reshape(12,4).mean(1)
+    s2mm = s2ac.reshape(12,4).mean(1)
+
+    document = Document()
+    table = document.add_table(rows=4, cols=13)
+    hdr = table.rows[0].cells
+    for i in range(12):
+        hdr[i+1].text = calendar.month_name[i+1]
+        table.rows[1].cells[i+1].text = '{0:.1f}'.format(rmm[i])
+        table.rows[2].cells[i+1].text = '{0:.1f}'.format(s1mm[i])
+        table.rows[3].cells[i+1].text = '{0:.1f}'.format(s2mm[i])
+
+    document.save('demo.docx')
 
 def QM_NBS(n=10):
     """Seasonal quantile ratios for NBS, computed by driving GCM.
@@ -552,7 +581,7 @@ def interpolate_ff_levels(lon, lat, scen='bc', L=None):
     # 2.3 Interpolate the scenario level at the point of interest
     L = L or interpolate_EC_levels(lon, lat)
 
-    if dom == 'lsl': #Because no reference level on the left side of the domain. 
+    if dom == 'lsl': #Because no reference level on the left side of the domain.
         return pd.Series(weight_EC_levels(L, wi), FS.index)
 
     # 2.4 Get the levels at the upstream and downstream control points for all 8 scenarios and interpolate at the point of interest

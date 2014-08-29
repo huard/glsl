@@ -74,7 +74,7 @@ def AECOM():
     # See http://www.ngs.noaa.gov/PUBS_LIB/NAVD88/navd88report.htm
     # NAV88 and IGLD85 seem to be one and the same...
     ECL = analysis.interpolate_EC_levels(lon, lat)
-    for scen, ts in zip(("BC", "SC"), analysis.scenario_2()):
+    for scen, ts in zip(("REF", "WI2"), analysis.scenario_2()):
 
         # Scenario weights
         wi = analysis.get_EC_scenario_index(ts)
@@ -121,7 +121,7 @@ def ECOSYSTEMES():
     out = {}
     out['WI1'] = {}
     out['WI2'] = {}
-
+    out['REF'] = {}
     s = '02OC016'
 
     L = HYDATio.get_hydat(s, 'H')
@@ -134,20 +134,20 @@ def ECOSYSTEMES():
     out['obs'] = F
     F = F.swaplevel(0,1)
 
-    fn = 'Water_Levels_OBS_Lac_St-Pierre_02OC016_IGLD85.xlsx'
-    F.to_panel().to_excel(os.path.join('..', 'deliverables', 'ECOSYSTEMES', fn))
-
+    fn = {}
+    fn['l'] = '../deliverables/ECOSYSTEMES/Scenarios_niveaux_Lac_St-Pierre_02OC016_IGLD85.xlsx'
+    fn['q'] = '../deliverables/ECOSYSTEMES/Scenarios_debits_Lac_St-Pierre.xlsx'
+    
     # What-if scenario #1
-    for scen in ['bc', 'wd']:
-        l = FFio.level_series_QH('lsp', scen)
-        q = FFio.total_flow('lsp', scen)
-        fn = 'Water_Levels_WhatIf1_Lac_St-Pierre_{0}_IGLD85.xlsx'.format(scen.upper())
-        fr = dump_xls(q.reindex(q.index.truncate(after=FFio.offset[scen]+29)), l.reindex(l.index.truncate(after=FFio.offset[scen]+29)), os.path.join('..', 'deliverables', 'ECOSYSTEMES', fn))
-        out['WI1'][scen.upper()] = fr
+    l = FFio.level_series_QH('lsp', 'wd')
+    q = FFio.total_flow('lsp', 'wd')
+#    fr = dump_xls(q.reindex(q.index.truncate(after=FFio.offset[scen]+29)), l.reindex(l.index.truncate(after=FFio.offset[scen]+29)), os.path.join('..', 'deliverables', 'ECOSYSTEMES', fn))
+    out['WI1']['q'] = q.reindex(q.index.truncate(after=FFio.offset['wd']+29))
+    out['WI1']['l'] = l.reindex(l.index.truncate(after=FFio.offset['wd']+29))
 
     # What-if Scenario #2
     ECL = analysis.interpolate_EC_levels(lon, lat)
-    for scen, ts in zip(("BC", "SC"), analysis.scenario_2()):
+    for scen, ts in zip(("REF", "WI2"), analysis.scenario_2()):
 
         # Scenario weights
         wi = analysis.get_EC_scenario_index(ts)
@@ -158,10 +158,16 @@ def ECOSYSTEMES():
         # Compute level at Lac St-Pierre
         lLSP = analysis.weight_EC_levels(ECL, wi)
 
-        fn = 'Water_Levels_WhatIf2_Lac_St-Pierre_{0}_IGLD85.xlsx'.format(scen)
-        fr = dump_xls(pd.Series(tsLSP, ts.index), pd.Series(lLSP, ts.index), os.path.join('..', 'deliverables', 'ECOSYSTEMES', fn))
-        out['WI2'][scen] = fr
+#        fn = 'Water_Levels_WhatIf2_Lac_St-Pierre_{0}_IGLD85.xlsx'.format(scen)
+#        fr = dump_xls(pd.Series(tsLSP, ts.index), pd.Series(lLSP, ts.index), os.path.join('..', 'deliverables', 'ECOSYSTEMES', fn))
+        out[scen]['q'] = pd.Series(tsLSP, ts.index)
+        out[scen]['l'] = pd.Series(lLSP, ts.index)
 
+    for var in ['q', 'l']:
+        EW = pd.ExcelWriter(fn[var])
+        for i, scen in enumerate(['REF', 'WI1', 'WI2']):
+            out[scen][var].to_frame(scen + ' m').to_excel(EW, scen)
+        EW.close()
     pickle.dump(out, open('../analysis/ecosystemes.pickle', 'wb'))
     return out
 
@@ -213,7 +219,31 @@ def TOURISME():
 
     return out
             
+def TRANSPORT():
+    """Niveaux a la jetee #1."""
+
+    fn = '../deliverables/Scenarios_niveaux_Jetee_1_mtl.xlsx'
+    EW = pd.ExcelWriter(fn)
+    out = {}
+
+    # What-if scenario #1
+    out['WI1'] = FFio.level_series_QH('mtl', 'wd')
     
+    # What-if scenario #2 at Sorel -> to Mtl
+    ECL = analysis.EC_scen_L['mtl']
+    for scen, ts in zip(("REF", "WI2"), analysis.scenario_2()):
+
+        # Scenario weights
+        wi = analysis.get_EC_scenario_index(ts)
+
+        out[scen] = pd.Series(analysis.weight_EC_levels(ECL, wi), ts.index)
+
+    for i, scen in enumerate(['REF', 'WI1', 'WI2']):
+        out[scen].to_frame(scen + ' m').to_excel(EW, scen)
+    EW.close()
+
+    return out
+
     
 
 def FONCIER():
