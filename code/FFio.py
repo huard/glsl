@@ -26,7 +26,7 @@ def _loadFF(fn, yo=0):
     with open(fn) as f:
         for i in range(4):
             txt = f.readline()
-        m = re.match('UNITS:(\w*)(m3s|n|m)', txt)
+        m = re.match('UNITS:\s*(\w*)(m3s|m3/s|n|m)', txt)
         if m:
             if m.groups()[0] == '':
                 scale = 1
@@ -61,17 +61,19 @@ def _loadFF(fn, yo=0):
     ts.units = units
     return ts
 
-def FF_flow(site, scen='bc', yo=0):
+def FF_flow(site, scen='bc', yo=0, up=False):
     """Return the flow at the given site provided by Fan & Fay.
 
     Parameters
     ----------
-    site : {lsl, rich, fran, mau, dpmi, stl, ont}
+    site : {rich, fran, mau, dpmi, stl, ont}
       River or site name.
     scen : {bc, ww, wd}
       Climate scenarios: base case, warm & wet, warm & dry.
     yo : int
       Year offset.
+    up : bool
+      Use updated values from the Upper Great Lakes study.
 
     Notes
     -----
@@ -85,24 +87,50 @@ def FF_flow(site, scen='bc', yo=0):
 
     tributaries = 'mau', 'fran', 'rich', 'chat', 'bat'
 
-    if site in tributaries:
-        DIR = '../data/FF/Input_CC'
-        addon = ''
+
+    if up:
+        if scen != 'bc':
+            raise ValueError('Only base case scenario available for updates.')
+
+        DIR = '../data/FF/Update_58DD/Plan58DD_Levels_Flow'
+        if site == 'ont':
+            fn = os.path.join(DIR, 'Qont_1900_2008.58DD')
+        elif site == 'stl':
+            fn = os.path.join(DIR, 'Stlqmq.58DD')
+        elif site == 'lsp':
+            fn = os.path.join(DIR, 'stprQL.58DD')
+        elif site == 'var':
+            fn = os.path.join(DIR, 'vrnQL.58DD')
+        elif site in tributaries:
+            DIR = '../data/FF/Update_58DD/Plan58DD_Tributaries'
+            if site == 'fran':
+                ns = 'stfr'
+            elif site == 'mau':
+                ns = 'stmrc'
+            elif site in ['dpmi', 'rich']:
+                ns = site
+
+            fn = os.path.join(DIR, '{0}qmq.dbf'.format(ns))
+
     else:
-        DIR = '../data/FF/Plan58DD_CC'
-        if site in ['dpmi', 'stl']:
-            addon = '_Plan58DD_CC'
-        elif site == 'ont':
-            addon = '_Feb06'
+        if site in tributaries:
+            DIR = '../data/FF/Input_CC'
+            addon = ''
+        else:
+            DIR = '../data/FF/Plan58DD_CC'
+            if site in ['dpmi', 'stl']:
+                addon = '_Plan58DD_CC'
+            elif site == 'ont':
+                addon = '_Feb06'
 
-        if site in ['stl', 'ont']:
-            site = 'Q' + site
+            if site in ['stl', 'ont']:
+                site = 'Q' + site
 
-        elif site == 'dpmi':
-            site = site+'qmq'
+            elif site == 'dpmi':
+                site = site+'qmq'
 
+        fn = os.path.join(DIR, '{0}{1}.{2}'.format(site, addon, scen))
 
-    fn = os.path.join(DIR, '{0}{1}.{2}'.format(site, addon, scen))
     return _loadFF(fn, yo)
 
 
@@ -125,7 +153,7 @@ def FF_tidal(scen='bc', y0=0):
     fn = os.path.join(DIR, 'tidal.{0}'.format(scen))
     return _loadFF(fn, y0)
 
-def FF_level(site, scen='bc', y0=0):
+def FF_level(site, scen='bc', y0=0, up=False):
     """Return the water level at the given site provided by Fan & Fay.
 
     Paramters
@@ -133,17 +161,42 @@ def FF_level(site, scen='bc', y0=0):
     site : {mtl, ont, pcl, srl, lsp}
       Site names: Montreal Jetty #1, Lake Ontario, Pointe Claire, Sorel,
       Lac St-Pierre.
-
     scen : {bc, ww, wd}
       Climate scenarios: base case, warm & wet, warm & dry.
+    yo : int
+      Year offset.
+    up : bool
+      Use updated values from the Upper Great Lakes study.
     """
-    DIR = '../data/FF/Plan58DD_CC'
-    if site == 'ont':
-        name = 'Level_Feb06'
-    elif site == 'mtl':
-        name = 'mtl_level_Plan58DD_CC'
-    elif site == 'pcl':
-        name = 'pcl_level_Plan58DD_CC'
+    if up:
+        if scen != 'bc':
+            raise ValueError ("Only base case scenario is available.")
+        scen = '58DD'
+
+        DIR = '../data/FF/Update_58DD/Plan58DD_Levels_Flow'
+        if site == 'mtl':
+            name = 'JTY1ql'
+        elif site == 'srl':
+            name = 'srlQL'
+        elif site == 'stl':
+            name = 'stlqml'
+        elif site == 'ont':
+            name = 'Level_1900_2008'
+        elif site == '3rv':
+            name = 'rivQL'
+        elif site == 'lsp':
+            name = 'stprQL'
+        elif site == 'var':
+            name = 'vrnQL'
+
+    else:
+        DIR = '../data/FF/Plan58DD_CC'
+        if site == 'ont':
+            name = 'Level_Feb06'
+        elif site == 'mtl':
+            name = 'mtl_level_Plan58DD_CC'
+        elif site == 'pcl':
+            name = 'pcl_level_Plan58DD_CC'
 
     fn = os.path.join(DIR, '{0}.{1}'.format(name, scen))
     return _loadFF(fn, y0)

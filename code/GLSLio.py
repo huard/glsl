@@ -79,6 +79,30 @@ def marinas():
             meta[n.value] = lon, lat
         return meta
 
+def stations_municipales():
+    import xlrd
+
+
+    out = {}
+    with xlrd.open_workbook('../data/Calculs UTEP.xlsx') as wb:
+        ws = wb.sheet_by_name('UTEP')
+        idn = ws.col(0,1)
+        usine = ws.col(1,0)
+        ville = ws.col(2,0)
+
+        lat1 = ws.col(5,0)
+        lon1 = ws.col(6,0)
+
+        lat2 = ws.col(20,0)
+        lon2 = ws.col(21,0)
+
+        for iv in idn:
+            i = int(iv.value)
+            out[i] = dict(usine=usine[i].value, ville=ville[i].value, lat1=lat1[i].value or None, lon1=lon1[i].value or None, lat2=lat2[i].value or None, lon2=lon2[i].value or None)
+
+        return out
+
+
 
 
 

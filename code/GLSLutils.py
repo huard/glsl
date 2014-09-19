@@ -17,6 +17,15 @@ def ordinal_ts(ts):
     toord = operator.methodcaller('toordinal')
     return np.array(list(map(toord, ts.index)))
 
+def fitfunction(q, l):
+    """Given streamflows and levels, return a function of the form ax**b that
+    fits the q-l relation.
+    """
+    from scipy import optimize
+    c = optimize.fmin(lambda C: np.sum((C[0] * q ** C[1] - l)**2), [1,1])
+    return lambda x: c[0]*x**c[1]
+
+
 
 def _quartermonth_bounds(leap=False):
     """Returns the bounds for the quarter month day of the year.

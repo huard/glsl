@@ -116,7 +116,7 @@ def scenarios_Sorel():
 def scenario_1():
     bc = FFio.total_flow('srl', 'bc')
     wd = FFio.total_flow('srl', 'wd')
-    return bc.reindex(bc.index.truncate(after=1991)), wd.reindex(wd.index.truncate(after=2069))
+    return bc.reindex(bc.index.truncate(after=1991)), wd.reindex(wd.index.truncate(after=2070))
 
 
 def scenario_2():
@@ -625,7 +625,38 @@ def weight_EC_levels(levels, wi):
     out[w1<0] = np.nan
     return out
 
+def check_in_domain():
+    sites = GLSLio.stations_municipales()
 
+    for key, val in sites.items():
+        for i in ['1', '2']:
+            lat, lon = val['lat'+i], val['lon'+i]
+            if lat is None or lon is None:
+                val['dom'+i] = None
+                continue
+
+            try:
+                val['dom'+i] = get_domain(lon, lat)
+            except ValueError:
+                val['dom'+i] = None
+
+    return sites
+
+
+
+
+def checkPointeClaire():
+    def degmin2dec(d,m,c):
+        """Convert degrees, minutes.decimals to plain decimals."""
+        return int(d) + float(m + '.' + c)/60.
+
+    lat = 45 +  25.24/60
+    lon = -73 -  49.40/60
+
+    ECL = interpolate_EC_levels(lon, lat)
+    return ECL
+    wi = get_EC_scenario_index([7273,])
+    return weight_EC_levels(ECL, wi)
 
 def frequential_analysis(ts):
     """

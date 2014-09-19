@@ -36,60 +36,91 @@ def plot_Sorel():
     fig.savefig('../rapport/figs/Sorel_flow_levels.png', dpi=200)
     plt.close()
 #
+def plot_stations_municipales():
+    sites = GLSLio.stations_municipales()
+    pts = {}
+    for key, val in sites.items():
+        for i in ['1', '2']:
+            lat, lon = val['lat'+i], val['lon'+i]
+            if lat is None or lon is None:
+                continue
+            pts[val['usine']+ ' #' + i] = (lon, lat)
 
+    fig, ax = graphs.plot_depth_map(8, pts=pts, inset=False)
+    return fig
+
+#
 ## Senario #1 for Pointe-Claire
 def AECOM():
     """Notes: le scénario livré en juillet a été produit avec un y0=1965 au lieu de 1975. L'erreur sur la correction est au pire de moins de 14%.
     Ça mérite d'envoyer une version corrigée.
     """
+
     out = {}
     out['WI1'] = {}
     out['WI2'] = {}
+    out['REF'] = {}
 
     # Observations at Pointe-Claire
     s = '02OA039'
-    L = HYDATio.get_hydat(s, 'H')
+
     M = HYDATio.get_station_meta(s)
     lat, lon = M['LATITUDE'], M['LONGITUDE']
 
-    LQ = GLSLutils.group_qom(L).mean()
-    LQ.index.names = ["Year", "QTM"]
-    F = LQ.to_frame('Level m')
-    out['obs'] = F
-    F = F.swaplevel(0,1)
+    if 0:
+        L = HYDATio.get_hydat(s, 'H')
+        LQ = GLSLutils.group_qom(L).mean()
+        LQ.index.names = ["Year", "QTM"]
+        F = LQ.to_frame('Level m')
+        out['obs'] = F
+        F = F.swaplevel(0,1)
 
-    fn = 'Water_Levels_OBS_Pointe-Claire_02OA039_IGLD85.xlsx'
-    F.to_panel().to_excel(os.path.join('..', 'deliverables', 'AECOM', fn))
+        fn = 'Water_Levels_OBS_Pointe-Claire_02OA039_IGLD85.xlsx'
+        F.to_panel().to_excel(os.path.join('..', 'deliverables', 'AECOM', fn))
+
+
+    fn = '../deliverables/AECOM/Scenarios_Pointe-Claire_IGLD85.xlsx'
+    EW = pd.ExcelWriter(fn)
 
 
     # What-if scenario #1
-    for scen in ['bc', 'wd']:
-        l = FFio.PCL(scen)
-        q = FFio.FF_flow('stl', scen)
-        fn = 'Water_Levels_WhatIf1_Pointe-Claire_{0}_IGLD85.xlsx'.format(scen.upper())
-        fr = dump_xls(q.reindex(q.index.truncate(after=29)), l.reindex(l.index.truncate(after=29)), os.path.join('..', 'deliverables', 'AECOM', fn), FFio.offset[scen])
-        out['WI1'][scen.upper()] = fr
+    l = FFio.PCL('wd')
+    q = FFio.FF_flow('stl', 'wd', FFio.offset['wd'])
+
+    out['WI1']['q'] = q.reindex(q.index.truncate(after=FFio.offset['wd']+29))
+    out['WI1']['l'] = l.reindex(l.index.truncate(after=FFio.offset['wd']+29))
 
     # What-if scenario #2 at Sorel
     # See http://www.ngs.noaa.gov/PUBS_LIB/NAVD88/navd88report.htm
     # NAV88 and IGLD85 seem to be one and the same...
     ECL = analysis.interpolate_EC_levels(lon, lat)
+
+    # Fit function level-streamflow
+    levelfunc = GLSLutils.fitfunction(analysis.EC_scen_Q['Sorel'], ECL)
+
     for scen, ts in zip(("REF", "WI2"), analysis.scenario_2()):
 
         # Scenario weights
         wi = analysis.get_EC_scenario_index(ts)
 
         # Compute flow at Lasalle
-        tsLS = analysis.weight_EC_levels(analysis.EC_scen_Q['LaSalle'], wi)
+        out[scen]['q'] = pd.Series(analysis.weight_EC_levels(analysis.EC_scen_Q['LaSalle'], wi), ts.index)
 
-        # Compute level at LaSalle
-        lLS = analysis.weight_EC_levels(ECL, wi)
-
-        fn = 'Water_Levels_WhatIf2_Pointe-Claire_{0}_IGLD85.xlsx'.format(scen)
-        fr = dump_xls(pd.Series(tsLS, ts.index), pd.Series(lLS, ts.index), os.path.join('..', 'deliverables', 'AECOM', fn))
-        out['WI2'][scen] = fr
+        # Compute level at LaSalle using fitted function
+        out[scen]['l'] = levelfunc(ts)
 
     pickle.dump(out, open('../analysis/aecom.pickle', 'wb'))
+
+    for scen in ['REF', 'WI1', "WI2"]:
+        fr = out[scen]['l'].to_frame('Niveau' + ' m')
+        fr['Debit m3s'] = out[scen]['q']
+        fr.to_excel(EW, scen)
+    EW.close()
+
+
+
+
+
 
 def dump_xls(flow, level, filename, offset=0):
     Fr = level.valid().to_frame('Level m')
@@ -137,7 +168,7 @@ def ECOSYSTEMES():
     fn = {}
     fn['l'] = '../deliverables/ECOSYSTEMES/Scenarios_niveaux_Lac_St-Pierre_02OC016_IGLD85.xlsx'
     fn['q'] = '../deliverables/ECOSYSTEMES/Scenarios_debits_Lac_St-Pierre.xlsx'
-    
+
     # What-if scenario #1
     l = FFio.level_series_QH('lsp', 'wd')
     q = FFio.total_flow('lsp', 'wd')
@@ -176,13 +207,13 @@ def TOURISME():
     """Certains des positions des marinas correspondent aux batiments, et non au bassin de la marina.
     J'ai contacté Stéphanie pour qu'on décide ce qu'on fait avec ca."""
     meta = GLSLio.marinas()
-    
+
     # Interpolate the levels at the marinas
     ECLpath = '../analysis/marinasECL_N.json'
     if os.path.exists(ECLpath):
         ECL = json.load(open(ECLpath))
     else:
-    
+
         ECL = {}
         for k, v in meta.items():
             try:
@@ -190,22 +221,22 @@ def TOURISME():
             except ValueError:
                 ECL[k] = None
         json.dump(ECL, open(ECLpath, 'w'))
-        
+
     out = {'REF':{} ,'WI1':{}, 'WI2':{}}
-    
+
     # Scenario #1
     for (key, L) in ECL.items():
         if L is not None:
             lon, lat = meta[key]
             out['WI1'][key] = analysis.interpolate_ff_levels(lon, lat, 'wd', L)
-            
+
     # Scenario #2
     for scen, ts in zip(("REF", "WI2"), analysis.scenario_2()):
         for (key, L) in ECL.items():
             if L is not None:
                 # Scenario weights
                 wi = analysis.get_EC_scenario_index(ts)
-    
+
                 # Compute levels
                 out[scen][key] = pd.Series(analysis.weight_EC_levels(L, wi), ts.index)
 
@@ -218,7 +249,7 @@ def TOURISME():
             EW.close()
 
     return out
-            
+
 def TRANSPORT():
     """Niveaux a la jetee #1."""
 
@@ -228,7 +259,7 @@ def TRANSPORT():
 
     # What-if scenario #1
     out['WI1'] = FFio.level_series_QH('mtl', 'wd')
-    
+
     # What-if scenario #2 at Sorel -> to Mtl
     ECL = analysis.EC_scen_L['mtl']
     for scen, ts in zip(("REF", "WI2"), analysis.scenario_2()):
@@ -244,7 +275,7 @@ def TRANSPORT():
 
     return out
 
-    
+
 
 def FONCIER():
     """Niveaux au Lac St-Louis (Pointe-Claire)"""
@@ -267,7 +298,7 @@ def FONCIER():
 
     # What-if scenario #1
     wd = FFio.PCL('wd')
-    out['WI1'] = wd.reindex(wd.index.truncate(after=2068))
+    out['WI1'] = wd.reindex(wd.index.truncate(after=2069))
 
     # What-if scenario #2 at Sorel
     ECL = analysis.interpolate_EC_levels(lon, lat)
@@ -294,24 +325,24 @@ def HYDRO():
         fn = '../deliverables/Scenarios_debit_lac_Ontario.xlsx'
         EW = pd.ExcelWriter(fn)
         tmp = {}
-    
+
         # 1
         wd = FFio.FF_flow('ont', 'wd')
         tmp['WI1'] = wd.reindex(wd.index.truncate(after=2069))
-    
+
         #2
         qbc, q2 = analysis.scenario_2()
-    
+
         ECQ = np.array( analysis.EC_scen_Q['Beauharnois'] ) + np.array( analysis.EC_scen_Q['lesCedres'] )
-    
+
         # Scenario weights
         for scen, ts in zip(("REF", "WI2"), analysis.scenario_2()):
             wi = analysis.get_EC_scenario_index(ts)
-    
+
             # Compute flow at LaSalle
             tmp[scen] = pd.Series(analysis.weight_EC_levels(ECQ, wi), ts.index)
-    
-    
+
+
         for i, scen in enumerate(['REF', 'WI1', 'WI2']):
             tmp[scen].to_frame(scen + ' m3s').to_excel(EW, scen)
         EW.close()

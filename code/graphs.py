@@ -399,6 +399,47 @@ def explain_scenario_2():
     fig.savefig('../figs/explanation_scenario_2.png')
     return fig
     #
+def compare_bases_cases_for_Laura():
+    bc_orig = FFio.level_series_QH("srl")
+    bc_up = FFio.FF_level('srl', up=True)
+    bc_EC_Q = ECio.Q_Sorel('qtm')
+    ECL = [ 3.09323328,  3.49145638,  4.1352682 ,  4.74138233,  5.49859576,
+        6.38552684,  7.10856182,  8.12003153]
+
+    bc_EC = pd.Series(analysis.weight_EC_levels(ECL, analysis.get_EC_scenario_index(bc_EC_Q)), bc_EC_Q.index)
+
+
+    if 0:
+        fig, ax = plt.subplots(figsize=(11,6))
+        fig.subplots_adjust(left=.1, right=.98)
+
+        Lbc = ax.plot_date(util.ordinal_qom(bc_orig), bc_orig.values, '-', color='green', lw=.6, alpha=.9,  label='Base Case original')
+        Lbc = ax.plot_date(util.ordinal_qom(bc_up), bc_up.values, '-', color='orange', lw=.6, alpha=.9,  label='Base Case UGLS')
+        Lbc = ax.plot_date(util.ordinal_qom(bc_EC), bc_EC.values, '-', color=cbc, lw=.6, alpha=.9,  label='Niveaux reconstitués à Sorel')
+
+        ax.set_ylabel("Niveau à Sorel [m]")
+        ax.set_xlim(xmin=dt.datetime(1953,1,1).toordinal())
+        ax.legend(fontsize='small', ncol=3, frameon=False )
+
+    if 1:
+        fig, ax = plt.subplots(figsize=(8,6))
+        x = np.linspace(0,11, 48)
+        x = np.arange(1, 49)
+
+        ax.plot(x, bc_orig.ix[1962:1990].groupby(level=1).mean(), color='green', lw=1.5, label='Base Case original')
+        ax.plot(x, bc_up.ix[1962:1990].groupby(level=1).mean(), color='orange', lw=1.5, label='Base Case UGLS')
+        ax.plot(x, bc_EC.ix[1962:1990].groupby(level=1).mean(), color=cbc, lw=1.5, label= 'Niveaux reconstitués à Sorel')
+
+        ax.legend(fontsize='small', ncol=1, frameon=False )
+        ax.set_ylabel("Niveau à Sorel [m]")
+
+    return fig, ax
+
+
+
+
+
+#
 def synthesis_scenarios(R, S1, S2):
     var = 'Level m'
     r = R[var].ix[1960:1989]
@@ -838,6 +879,15 @@ def plot_Sorel_frequential_analysis():
     plt.savefig('../figs/Sorel_frequential_analysis.svg')
     return ax
 
+def plot_flow_level_rel(data):
+
+    fig, ax = plt.subplots(1,1)
+
+    for scen in data.keys():
+        ax.plot(data[scen]['q'], data[scen]['l'], '.', label=scen)
+
+    ax.set_xlabel("Débit [m³/s]")
+    ax.set_ylabel("Niveau [m]")
 
 
 def plot_mesh():
