@@ -147,7 +147,7 @@ def EC_pts(reg=None):
     else:
         return out
 
-def EC_depth(reg=None, scen=None):
+def EC_depth(reg=None, scen=None, var='depth'):
     """Return water depth."""
     out = {}
     if reg is None:
@@ -160,7 +160,7 @@ def EC_depth(reg=None, scen=None):
     with h5.File('../data/HYDRO_DATA_EC.h5') as F:
         for r in regions:
             G = F.get(r)
-            out[r] = G.get('depth')[s]
+            out[r] = G.get(var)[s]
 
     if type(reg) == str:
         return out[reg]
@@ -174,6 +174,8 @@ def MTM8():
 
     # NAD83 / MTM zone 8 Québec
     <42104> +proj=tmerc +lat_0=0 +lon_0=-73.5 +k=0.999900 +x_0=304800 +y_0=0 +ellps=GRS80 +units=m +no_defs  no_defs <>
+
+    EPSG: 32188
     """
     from mpl_toolkits.basemap import pyproj
     return pyproj.Proj("+proj=tmerc +lat_0=0 +lon_0=-73.5 +k=0.999900 +x_0=304800 +y_0=0 +ellps=GRS80 +units=m +no_defs")

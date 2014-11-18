@@ -432,6 +432,7 @@ def compare_bases_cases_for_Laura():
 
         ax.legend(fontsize='small', ncol=1, frameon=False )
         ax.set_ylabel("Niveau à Sorel [m]")
+        ax.set_xlabel("Quart de mois")
 
     return fig, ax
 
@@ -942,7 +943,7 @@ def plot_mesh():
     return fig, ax
 
 
-def plot_depth_map(scen, pts={}, inset=True, ax=None):
+def plot_depth_map(scen, pts={}, inset=True, ax=None, var='depth'):
     from scipy.spatial import Delaunay
     import matplotlib.transforms as mtransforms
     from mpl_toolkits.axes_grid1.inset_locator import zoomed_inset_axes
@@ -991,15 +992,23 @@ def plot_depth_map(scen, pts={}, inset=True, ax=None):
             x,y = proj(*c)
             ax.plot([x,], [y,], '*', mfc='k', mec='none', ms=4, label=key, zorder=1, transform=AR + ax.transData)
 
+            ax.annotate(str(key), (x,y), (x,y), transform=AR + ax.transData, ha='left', va='bottom', size='large')
+            ax.text(x, y, str(key), transform=AR + ax.transData, fontsize=10)
+
         #ax.legend(fontsize='small')
 
 
     pts = np.hstack(ECio.EC_pts().values())
-    D = np.hstack(ECio.EC_depth(scen=scen).values())
+    D = np.hstack(ECio.EC_depth(scen=scen, var=var if var!='level' else 'depth').values())
 
     X, Y, Z = pts
     D = np.ma.masked_less_equal(D, 0)
-    S = ax.scatter(X, Y, c=D, s=1, linewidths=0, transform=AR + ax.transData, cmap=cm, vmax=45, vmin=1e-2, norm=mpl.colors.LogNorm())
+    if var == 'depth':
+        S = ax.scatter(X, Y, c=D, s=1, linewidths=0, transform=AR + ax.transData, cmap=cm, vmax=45, vmin=1e-2, norm=mpl.colors.LogNorm())
+    if var == 'level':
+        S = ax.scatter(X, Y, c=D+Z, s=1, linewidths=0, transform=AR + ax.transData, cmap=cm, vmax=45, vmin=1e-2, norm=mpl.colors.LogNorm())
+    elif var == 'speed':
+        S = ax.scatter(X, Y, c=D, s=1, linewidths=0, transform=AR + ax.transData, cmap=cm, vmin=0, vmax=2)
 
 
 
@@ -1018,12 +1027,20 @@ def plot_depth_map(scen, pts={}, inset=True, ax=None):
 
     if singlefig:
         cb = plt.colorbar(S, cax=cbax, extend='max', orientation='horizontal')
-        cb.set_label('Profondeur [m]')
+        if var == 'depth':
+            cb.set_label('Profondeur [m]')
+        if var == 'level':
+                cb.set_label('Niveau [m]')
+        elif var == 'speed':
+            cb.set_label('Vitesse [m/s]')
 
 
     if inset:
         axins = zoomed_inset_axes(ax, 3.5, loc=4, borderpad=0.3) # zoom =
-        axins.scatter(X, Y, c=D, s=2, cmap=cm, vmax=45, vmin=1e-2, linewidths=0, transform=AR + axins.transData, norm=mpl.colors.LogNorm())
+        if var == 'depth':
+            axins.scatter(X, Y, c=D, s=2, cmap=cm, vmax=45, vmin=1e-2, linewidths=0, transform=AR + axins.transData, norm=mpl.colors.LogNorm())
+        elif var == 'speed':
+            axins.scatter(X, Y, c=D, s=2, cmap=cm, vmax=2, vmin=0, linewidths=0, transform=AR + axins.transData)
 
         # sub region of the original image
         x1, y1 = 2475000, 4482000
@@ -1035,18 +1052,23 @@ def plot_depth_map(scen, pts={}, inset=True, ax=None):
 
     return fig, ax
 
-def show_all_depths():
-    fig, axes = plt.subplots(4,2, figsize=(6.5,9))
+def show_all_depths(var='depth'):
+    fig, axes = plt.subplots(4,2, figsize=(11,14))
     fig.subplots_adjust(wspace=0.0, hspace=0.0, left=0.0, right=1, top=1, bottom=.08)
     cbax = fig.add_axes([.1,.06,.8,.025])
     Q = analysis.EC_scen_Q['Sorel']
 
     for i in range(8):
-        f, ax = plot_depth_map(i+1, inset=False, ax=axes.flat[i])
+        f, ax = plot_depth_map(i+1, inset=False, ax=axes.flat[i], var=var)
         axes.flat[i].text(0.1, .9, "#{0}: {1}m³/s".format(i+1, Q[i]), ha='left', va='top', fontsize=14, fontweight='bold', alpha=.8, transform=axes.flat[i].transAxes)
 
     cb = plt.colorbar(ax.collections[0], cax=cbax, extend='max', orientation='horizontal')
-    cb.set_label('Profondeur [m]')
+
+    if var == 'depth':
+        cb.set_label('Profondeur [m]')
+    elif var == 'speed':
+        cb.set_label('Vitesse [m/s]')
+
 
     return fig
 
