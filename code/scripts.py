@@ -64,73 +64,8 @@ def plot_stations_usees():
 	return fig
 #
 ## Senario #1 for Pointe-Claire
-def AECOM():
-	"""Notes: le scénario livré en juillet a été produit avec un y0=1965 au lieu de 1975. L'erreur sur la correction est au pire de moins de 14%.
-	Ça mérite d'envoyer une version corrigée.
-	"""
 
-	out = {}
-	out['WI1'] = {}
-	out['WI2'] = {}
-	out['REF'] = {}
-
-	# Observations at Pointe-Claire
-	s = '02OA039'
-
-	M = HYDATio.get_station_meta(s)
-	lat, lon = M['LATITUDE'], M['LONGITUDE']
-
-	if 0:
-		L = HYDATio.get_hydat(s, 'H')
-		LQ = GLSLutils.group_qom(L).mean()
-		LQ.index.names = ["Year", "QTM"]
-		F = LQ.to_frame('Level m')
-		out['obs'] = F
-		F = F.swaplevel(0,1)
-
-		fn = 'Water_Levels_OBS_Pointe-Claire_02OA039_IGLD85.xlsx'
-		F.to_panel().to_excel(os.path.join('..', 'deliverables', 'AECOM', fn))
-
-
-	fn = '../deliverables/AECOM/Scenarios_Pointe-Claire_IGLD85.xlsx'
-	EW = pd.ExcelWriter(fn)
-
-
-	# What-if scenario #1
-	l = FFio.PCL('wd')
-	q = FFio.FF_flow('stl', 'wd', FFio.offset['wd'])
-
-	out['WI1']['q'] = q.reindex(q.index.truncate(after=FFio.offset['wd']+29))
-	out['WI1']['l'] = l.reindex(l.index.truncate(after=FFio.offset['wd']+29))
-
-	# What-if scenario #2 at Sorel
-	# See http://www.ngs.noaa.gov/PUBS_LIB/NAVD88/navd88report.htm
-	# NAV88 and IGLD85 seem to be one and the same...
-	ECL = analysis.interpolate_EC_levels(lon, lat)
-
-	# Fit function level-streamflow
-	levelfunc = GLSLutils.fitfunction(analysis.EC_scen_Q['Sorel'], ECL)
-
-	for scen, ts in zip(("REF", "WI2"), analysis.scenario_2()):
-
-		# Scenario weights
-		wi = analysis.get_EC_scenario_index(ts)
-
-		# Compute flow at Lasalle
-		out[scen]['q'] = pd.Series(analysis.weight_EC_levels(analysis.EC_scen_Q['LaSalle'], wi), ts.index)
-
-		# Compute level at LaSalle using fitted function
-		out[scen]['l'] = levelfunc(ts)
-
-	pickle.dump(out, open('../analysis/aecom.pickle', 'wb'))
-
-	for scen in ['REF', 'WI1', "WI2"]:
-		fr = out[scen]['l'].to_frame('Niveau' + ' m')
-		fr['Debit m3s'] = out[scen]['q']
-		fr.to_excel(EW, scen)
-	EW.close()
-
-def AECOM2():
+def AECOM_potable():
 
 	meta = GLSLio.stations_potables()
 
@@ -176,7 +111,7 @@ def AECOM2():
 
 	return out
 
-def AECOM3():
+def AECOM_usee():
 	meta = GLSLio.stations_usees_2()
 
 	contributions = {
@@ -259,8 +194,6 @@ def AECOM3():
 
 
 
-
-
 def compute_ECL_potable():
 	ECL = {}
 	meta = GLSLio.stations_potables()
@@ -277,38 +210,6 @@ def compute_ECL_potable():
 				pass
 
 	pickle.dump(ECL, open('../analysis/potableECL_N.pickle', 'bw'))
-
-
-
-	# Scenario #1
-	for (key, Ls) in ECL.items():
-		for i in [1,2,3]:
-			L = Ls.get(i)
-			if L is not None:
-				lon, lat = meta[key][i]
-				out['WI1']['{0}_NO{1}'.format(key, i)] = analysis.interpolate_ff_levels(lon, lat, 'wd', L)
-
-	# Scenario #2
-	for scen, ts in zip(("REF", "WI2"), analysis.scenario_2()):
-		for (key, Ls) in ECL.items():
-			for i in [1,2,3]:
-				L = Ls.get(i)
-				if L is not None:
-					# Scenario weights
-					wi = analysis.get_EC_scenario_index(ts)
-
-					# Compute levels
-					out[scen]['{0}_NO{1}'.format(key, i)] = pd.Series(analysis.weight_EC_levels(L, wi), ts.index)
-
-	for key in out['REF'].keys():
-		fn = '../deliverables/AECOM/Scenarios_niveaux_eau_potable_{0}_IGLD85.xlsx'.format(key)
-		EW = pd.ExcelWriter(fn)
-		for i, scen in enumerate(['REF', 'WI1', 'WI2']):
-			out[scen][key].to_frame(scen + ' m').to_excel(EW, scen)
-		EW.close()
-
-	return out
-
 
 def write_domain_in_usees():
 	from openpyxl import Workbook, load_workbook
@@ -345,23 +246,6 @@ def write_domain_in_potables():
 	wb.save('../data/AECOM/Calculs UTEP domain check.xlsx')
 
 
-def compute_ECL_potable():
-	ECL = {}
-	meta = GLSLio.stations_potables()
-	for k, v in meta.items():
-		ECL[k] = {}
-		for i in [1,2,3]:
-			if meta[k].get(i) is None:
-				continue
-
-			lon, lat = meta[k][i]
-			try:
-				ECL[k][i] = analysis.interpolate_EC_levels(lon, lat).tolist()
-			except ValueError:
-				pass
-
-	pickle.dump(ECL, open('../analysis/potableECL_N.pickle', 'bw'))
-
 def add_ECL_carrieres():
 	ECLpath = '../analysis/potableECL_N.pickle'
 	ECL = pickle.load(open(ECLpath, 'br'))
@@ -376,9 +260,6 @@ def add_ECL_carrieres():
 	ECL[6][1] = [8.7882906836, 9.4553778364, 10.046259892, 10.5828876396, 11.3902671625, 12.1181908673, 12.915365757, 13.6494202691]
 
 	pickle.dump(ECL, open(ECLpath, 'bw'))
-
-
-
 
 
 def Laura():

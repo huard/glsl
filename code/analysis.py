@@ -2,7 +2,7 @@
 import numpy as np
 import scipy.stats
 import pandas as pd
-import GLSLio, FFio, ECio, HYDATio
+import GLSLio, FFio, ECio, HYDATio, GLSLutils
 from imp import reload
 from matplotlib import pyplot as plt
 reload(GLSLio)
@@ -110,6 +110,59 @@ def scenarios_Sorel():
 	F2['Flow m3s'] = q2
 
 	return Fbc, F1, F2
+
+
+def extension_1():
+	"""Fill void in WI1 from 2010 to 2039.
+
+	Take years from 1967 to 1982 from BC, then years from 2050 to 2064 from WD
+	and splice them together. Each section is scaled by a scaling factor between
+	mean seasonal values from BC and WD, depending on the year of application.
+	"""
+	bc, wd = scenario_1()
+
+	# Seasonal means
+	Gbc = bc.groupby(GLSLutils.qom2season)
+	Gwd = wd.groupby(GLSLutils.qom2season)
+
+	delta =  Gwd.mean() - Gbc.mean()
+
+	# First segment (2010 - 2024)
+	s1 = bc.reindex(bc.index.truncate(before=1974, after=1988))
+	s1.index = pd.MultiIndex.from_arrays([s1.index.get_level_values(0).values+36, s1.index.get_level_values(1)], names=bc.index.names)
+
+	# Second segment (2025-2039)
+	s2 = wd.reindex(wd.index.truncate(before=2049, after=2063))
+	s2.index = pd.MultiIndex.from_arrays([s2.index.get_level_values(0).values-24, s2.index.get_level_values(1)], names=s2.index.names)
+
+	# 2010 - 2039 segment
+	ext = pd.concat([s1,s2])
+
+	# Application of scaling factor
+	sf = [scale_delta(delta, date) for date, val in ext.items()]
+
+	return ext + sf
+
+
+def scale_delta(delta, date, y1=1977, y2=2055, ym=2025, type='+'):
+	"""Return the seasonal delta for (year, qom)."""
+	s = GLSLutils.qom2season(date)
+	d = delta[s]
+	y = date[0]
+	dy = y2 - y1
+	yr = y1 if y < ym else y2
+
+	if type=='*':
+		sf = d * (1 + (d - 1) * (y - yr)/dy)
+
+	elif type=='+':
+		sf = d * (y - yr)/ dy
+
+	return sf
+
+
+
+
 
 
 

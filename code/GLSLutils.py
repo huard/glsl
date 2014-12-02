@@ -112,6 +112,22 @@ def qom2date(date, offset=0):
 
     return out
 
+def qom2season(date):
+    """Return the season of the QoM."""
+
+    q = date[1]
+    if q in range(9,21):
+        return 'Spring'
+    elif q in range(21, 33):
+        return 'Summer'
+    elif q in range(33, 45):
+        return "Fall"
+    elif q in list(range(45, 49)) + list(range(1,9)):
+        return 'Winter'
+    else:
+        raise ValueError("QoM not recognized.")
+
+
 def group_qom(ts, dt=False):
   """Take TimeSeries and return a grouped object."""
   return ts.groupby([lambda x: x.year, quartermonth_index])
