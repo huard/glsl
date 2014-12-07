@@ -4,6 +4,7 @@ All IO relation to Fan & Fay
 import numpy as np
 import pandas as pd
 import os, re
+import GLSLutils
 
 
 offset = {'bc': 1961,
@@ -271,6 +272,10 @@ def level_series_QH(site, scen='bc'):
 
     K = FF_K(site, scen, y0)
     T = FF_tidal(scen, y0)
+
+    # Add one year to the K and T records (Q also misses one year... shit)
+    #K = pd.concat([K, GLSLutils.select_and_shift(K, slice(y0+1,y0+2), 29)])
+    #T = pd.concat([T, GLSLutils.select_and_shift(T, slice(y0+1,y0+2), 29)])
 
     f = stage_func(site)
     ts = f(K*Q, T)

@@ -170,6 +170,73 @@ def showcase_scenarios(var='H'):
     fig.savefig('../figs/resume_scenarios_zoom.png')
 
 
+def transport(i):
+    """Comparer les séries observées à la jetée #1 avec les scénarios."""
+    import HYDATio
+
+    # Observations - 0 des cartes
+    Hd = HYDATio.get_hydat('02OA046', 'H') - 5.56 # Daily
+    H = GLSLutils.group_qom(Hd).mean()
+
+    # Scénario REF
+    ECL = analysis.EC_scen_L['mtl']
+    ref, wi2 = analysis.scenario_2()
+    wi = analysis.get_EC_scenario_index(ref)
+    tsr = pd.Series(analysis.weight_EC_levels(ECL, wi), ref.index) - 5.56
+
+    if i==1:
+        # Plot both time series (QOM)
+        a = .6
+        fig, ax = plt.subplots(1,1, figsize=(10, 5))
+        fig.subplots_adjust(left=.07, right=.99)
+        bcind = GLSLutils.ordinal_qom(tsr)
+        Lobs = ax.plot_date(GLSLutils.ordinal_qom(H), H.values, '-', color='#205e88', lw=0.8, alpha=a,  label='Observations')[0]
+        Lbc = ax.plot_date(bcind, tsr.values, '-', color=cbc, lw=1.1, alpha=0.6,  label='Scénario de référence')[0]
+
+        ax.set_xlim(bcind[0], bcind[-1])
+        ax.set_ylim(-.6, 3.3)
+        ax.set_xlabel("Année")
+        ax.set_ylabel("Niveau à la Jetée #1 [m]")
+        ax.text(0.02, 1.01, "Moyennes quart-de-mois par rapport au zéro des cartes", fontsize='small', transform=ax.transAxes)
+        ax.legend(loc='upper right', frameon=False, fontsize='small', t)
+        return fig, ax
+
+    # Plot both time series (annual mean)
+    if i==2:
+        a = .6
+        fig, ax = plt.subplots(1,1, figsize=(10, 5))
+        fig.subplots_adjust(left=.07, right=.99)
+        bcind = GLSLutils.ordinal_qom(tsr)
+        Hm = H.groupby(level=0).mean()
+        Rm = tsr.groupby(level=0).mean()
+
+        Lobs = ax.plot(Hm.index, Hm.values, '-', color='#205e88', marker='o', mec='#205e88', mfc='w', lw=1.5, mew=1.5, alpha=a,  label='Observations')[0]
+        Lbc = ax.plot(Rm.index, Rm.values, '-', color=cbc, marker='o', mec=cbc, mfc='w', lw=1.5, mew=1.5, alpha=0.6,  label='Scénario de référence')[0]
+
+        ax.set_xlim(Rm.index[0], Rm.index[-1])
+
+        ax.set_xlabel("Année")
+        ax.set_ylabel("Niveau à la Jetée #1 [m]")
+        ax.text(0.02, 1.01, "Moyennes annuelles par rapport au zéro des cartes", fontsize='small', transform=ax.transAxes)
+        ax.legend(loc='upper right', frameon=False, fontsize='small')
+        return fig, ax
+
+
+    # Distribution (1980-2010)
+    if i==3:
+        fig, ax = plt.subplots(1,1)
+        ax.hist([H.valid().ix[1980:2010].values, tsr.ix[1980:2010]], 20, color=['#205e88', cbc], alpha=.7, label=['Observations', 'Scénario de référence'], linewidth=0)
+
+        ax.legend(loc='upper right', frameon=False, fontsize='small')
+        ax.set_xlabel("Niveau à la Jetée #1 [m]")
+        ax.set_ylabel("Nb d'occurrences entre 1980 et 2010")
+        ax.text(0.02, 1.01, "Moyennes quart-de-mois par rapport au zéro des cartes", fontsize='small', transform=ax.transAxes)
+
+        return fig, ax
+
+
+
+
 
 def scenarios(data):
 

@@ -320,12 +320,17 @@ def ECOSYSTEMES():
 	F = F.swaplevel(0,1)
 
 	fn = {}
-	fn['l'] = '../deliverables/ECOSYSTEMES/Scenarios_niveaux_Lac_St-Pierre_02OC016_IGLD85.xlsx'
-	fn['q'] = '../deliverables/ECOSYSTEMES/Scenarios_debits_Lac_St-Pierre.xlsx'
+	fn['l'] = '../deliverables/Ecosystemes/Scenarios_niveaux_Lac_St-Pierre_02OC016_IGLD85.xlsx'
+	fn['q'] = '../deliverables/Ecosystemes/Scenarios_debits_Lac_St-Pierre.xlsx'
 
 	# What-if scenario #1
+	# Q
+	bc, wd = analysis.scenario_1('lsp')
+
+
+
 	l = FFio.level_series_QH('lsp', 'wd')
-	q = FFio.total_flow('lsp', 'wd')
+
 	#fr = dump_xls(q.reindex(q.index.truncate(after=FFio.offset[scen]+29)), l.reindex(l.index.truncate(after=FFio.offset[scen]+29)), os.path.join('..', 'deliverables', 'ECOSYSTEMES', fn))
 	out['WI1']['q'] = q.reindex(q.index.truncate(after=FFio.offset['wd']+29))
 	out['WI1']['l'] = l.reindex(l.index.truncate(after=FFio.offset['wd']+29))
@@ -405,7 +410,10 @@ def TOURISME():
 	return out
 
 def TRANSPORT():
-	"""Niveaux a la jetee #1."""
+	"""Niveaux a la jetee #1.
+
+	Relation 0 des cartes IGLD85: 5.560
+	"""
 
 	fn = '../deliverables/Scenarios_niveaux_Jetee_1_mtl.xlsx'
 	EW = pd.ExcelWriter(fn)
@@ -525,12 +533,12 @@ def HYDRO():
 	"""Scénario de débit pour Beauharnois et Les Cedres."""
 
 
-	fn = '../deliverables/Scenarios_debit_lac_Ontario.xlsx'
+	fn = '../deliverables/Hydroelectricite/Scenarios_debit_lac_Ontario.xlsx'
 	EW = pd.ExcelWriter(fn)
 	tmp = {}
 
 	# 1
-	wd = FFio.FF_flow('ont', 'wd', FFio.offset['wd']	) #check annees
+	bc, wd = analysis.scenario_1('ont')
 	tmp['WI1'] = wd.reindex(wd.index.truncate(after=2069))
 
 	#2

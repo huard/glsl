@@ -93,6 +93,10 @@ def annual_min_dayly_ts(ts):
 
     return ts_min
 
+def select_and_shift(ts, before, after, offset=0):
+    b = ts.reindex(ts.index.truncate(before=before, after=after))
+    b.index = pd.MultiIndex.from_arrays([b.index.get_level_values(0).values+offset, b.index.get_level_values(1)], names=b.index.names)
+    return b
 
 def qom2date(date, offset=0):
     """Convert a MultiIndex (year, qom) into date object."""

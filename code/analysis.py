@@ -84,7 +84,10 @@ def scenarios_Sorel():
 	out = {}
 
 	# Q
+	q0 = FFio.total_flow('srl', 'bc')
 	q1 = FFio.total_flow('srl', 'wd')
+	q1 = extend_WI1(q0,q1)
+
 	qbc, q2 = scenario_2()
 
 	# H
@@ -92,7 +95,10 @@ def scenarios_Sorel():
 	M = HYDATio.get_station_meta(s)
 	lat, lon = M['LATITUDE'], M['LONGITUDE']
 
+	l0 = FFio.level_series_QH('srl', 'bc')
 	l1 = FFio.level_series_QH('srl', 'wd')
+	l1 = extend_WI1(l0,l1)
+
 	#ECL = interpolate_EC_levels(lon, lat)
 	ECL = [ 3.09323328,  3.49145638,  4.1352682 ,  4.74138233,  5.49859576,
 		6.38552684,  7.10856182,  8.12003153]
@@ -112,37 +118,30 @@ def scenarios_Sorel():
 	return Fbc, F1, F2
 
 
-def extension_1():
-	"""Fill void in WI1 from 2010 to 2039.
 
-	Take years from 1967 to 1982 from BC, then years from 2050 to 2064 from WD
-	and splice them together. Each section is scaled by a scaling factor between
-	mean seasonal values from BC and WD, depending on the year of application.
-	"""
-	bc, wd = scenario_1()
+def extend_WI1(ref, fut, type='+'):
 
-	# Seasonal means
-	Gbc = bc.groupby(GLSLutils.qom2season)
-	Gwd = wd.groupby(GLSLutils.qom2season)
+	Gr = ref.groupby(GLSLutils.qom2season)
+	Gf = fut.groupby(GLSLutils.qom2season)
 
-	delta =  Gwd.mean() - Gbc.mean()
+	if type == '+':
+		delta =  Gf.mean() - Gr.mean()
+	elif type == '*':
+		delta =  Gf.mean() / Gr.mean()
+	else:
+		raise ValueError(type)
 
 	# First segment (2010 - 2024)
-	s1 = bc.reindex(bc.index.truncate(before=1974, after=1988))
-	s1.index = pd.MultiIndex.from_arrays([s1.index.get_level_values(0).values+36, s1.index.get_level_values(1)], names=bc.index.names)
+	s1 = GLSLutils.select_and_shift(ref, before=1974, after=1988, offset=36)
 
 	# Second segment (2025-2039)
-	s2 = wd.reindex(wd.index.truncate(before=2049, after=2063))
-	s2.index = pd.MultiIndex.from_arrays([s2.index.get_level_values(0).values-24, s2.index.get_level_values(1)], names=s2.index.names)
+	s2 = GLSLutils.select_and_shift(fut, before=2049, after=2063, offset=-24)
 
-	# 2010 - 2039 segment
 	ext = pd.concat([s1,s2])
 
 	# Application of scaling factor
-	sf = [scale_delta(delta, date) for date, val in ext.items()]
-
-	return ext + sf
-
+	sf = [scale_delta(delta, date, y1=1977, y2=2055, ym=2025, type=type) for date, val in ext.items()]
+	return pd.concat([ext + sf, fut])
 
 def scale_delta(delta, date, y1=1977, y2=2055, ym=2025, type='+'):
 	"""Return the seasonal delta for (year, qom)."""
@@ -161,16 +160,12 @@ def scale_delta(delta, date, y1=1977, y2=2055, ym=2025, type='+'):
 	return sf
 
 
+def scenario_1(site):
+	bc = FFio.total_flow(site, 'bc')
+	wd = FFio.total_flow(site, 'wd')
 
-
-
-
-
-
-def scenario_1():
-	bc = FFio.total_flow('srl', 'bc')
-	wd = FFio.total_flow('srl', 'wd')
-	return bc.reindex(bc.index.truncate(after=1991)), wd.reindex(wd.index.truncate(after=2070))
+	s1 = extend_WI1(bc, wd)
+	return bc.reindex(bc.index.truncate(after=1991)), s1.reindex(s1.index.truncate(after=2070))
 
 
 def scenario_2():
