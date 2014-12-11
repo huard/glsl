@@ -40,6 +40,7 @@ EC_scen_L = {'mtl': [4.29, 4.95, 5.61, 6.30, 7.19, 7.99, 8.8, 9.82],
 			 'trois': [2.52, 2.95, 3.55, 4.06, 4.69, 5.53, 6.16, 7.24],}
 #             'lsp': [ 2.765531,  3.076017,  3.779904,  4.375879,  5.096382,  6.007973,
 #        6.734745,  7.827078]} # LSP calculé à partir du modèle 2D, et non du tableau.
+# srl levels don't match with levels interpolated from the 2D model, although their lat lon are pretty close.
 
 # Temps de retour
 EC_scen_T = [10000, 70, 3, None, None, 2, 16, 7000]
@@ -62,6 +63,135 @@ gcms = {'CGCM2.3': (('afp',), ('afq',)),
 aliases = {'aet': 'aeu', 'aev': 'aew', 'aey': 'afb','aez': 'afc','afa': 'afd',\
 		 'afp': 'afq', 'agw': 'ahb','agx': 'agz', 'ahi': 'ahk','ahj': 'ahw'}
 
+def scenario_QR(EC=None):
+	"""Return the Reference scenario and translate given the EC table. If EC
+	is None, flow is at Sorel."""
+	ts = ECio.Q_Sorel('qtm')
+	ref = ts.reindex(ts.index.truncate(1953,2012)) #57
+
+	if EC is None:
+		return ref
+	else:
+		return translate(ref, EC)
+
+def scenario_Q1(site, EC=None):
+	"""Generate scenario WI1 at site and translate given the EC table."""
+	if site in ['srl', 'ont', 'lsp']:
+		ns = site
+	elif site is None and EC is not None:
+		ns = 'srl'
+	else:
+		raise ValueError
+
+	bc = FFio.total_flow(ns, 'bc')
+	wd = FFio.total_flow(ns, 'wd')
+	s1 = extend_WI1(bc, wd)
+
+	s1 = s1.reindex(s1.index.truncate(after=2070))
+
+	if site is None:
+		return translate(s1, EC)
+	else:
+		return s1
+
+def scenario_Q2(EC=None):
+	"""Return the scenario WI2 and translate given the EC table. If EC
+	is None, flow is at Sorel."""
+
+	# NBS delta
+	r, f = NBS_delta()
+	delta = f - r
+
+	# Sorel base series
+	ts = ECio.Q_Sorel('qtm')
+
+	# Compute annual cycle
+	an = ts.groupby(level=1).mean()
+
+	# Scale the climate change factor in mm³/s with respect to the amplitude.
+	# Translate by two weeks the signal
+	x = np.linspace(0,11, 48)
+	cc = np.interp(x, range(12), delta/r.ptp()) * an.ptp()
+	cc = np.roll(cc, 2)
+
+	bc = ts.reindex(ts.index.truncate(1953,2012)) #57
+	#bc = ts.ix[1962:1991]; #78
+
+	s2 = apply_delta(shift_mi(bc, 57), cc)
+
+	if EC is not None:
+		return translate(s2, EC)
+	else:
+		return s2
+
+def scenario_HR(EC=None):
+	"""Return the water level according to the reference scenario.
+	Values are given for Sorel by default if EC is None."""
+	if EC is None:
+		EC = EC_scen_L['srl']
+
+	q = scenario_QR()
+	return translate(q, EC)
+
+def scenario_H1(site, lon=None, lat=None, EC=None, noFFinterp=False):
+	"""Return the water level according to the scenario WI1.
+	Values are given for site by default if EC is None."""
+
+	if site in {'mtl', 'var', 'srl', 'lsl', 'lsp', 'trois'}:
+		bc = FFio.level_series_QH(site, 'bc')
+		wd = FFio.level_series_QH(site, 'wd')
+
+	elif EC is not None:
+		bc = interpolate_ff_levels(lon, lat, 'bc', EC, noFFinterp)
+		wd = interpolate_ff_levels(lon, lat, 'wd', EC, noFFinterp)
+
+	else:
+		raise ValueError
+
+
+	l = extend_WI1(bc,wd)
+
+	return l
+
+def scenario_H2(EC=None):
+	"""Return the water level according to the scenario WI1.
+	Values are given at Sorel by default if EC is None."""
+
+	if EC is None:
+		EC = EC_scen_L['srl']
+
+	q = scenario_Q2()
+	return translate(q, EC)
+
+def scenarios_Q(site=None, EC=None):
+	"""Return reference, WI1 and WI2 flow series."""
+	return scenario_QR(EC), scenario_Q1(site, EC), scenario_Q2(EC)
+
+def scenarios_H(site=None, lon=None, lat=None, EC=None, noFFinterp=False):
+	"""Return reference, WI1 and WI2 level series."""
+	return scenario_HR(EC), scenario_H1(site, lon, lat, EC, noFFinterp), scenario_H2(EC)
+
+def scenarios_QH(site=None, lon=None, lat=None, ECQ=None, ECH=None, noFFinterp=False):
+	"""Return DataFrames with scenarios REF, WI1 and WI2."""
+	if ECH is None:
+		ECH = EC_scen_L['srl']
+	if ECQ is None:
+		ECQ = EC_scen_Q['Sorel']
+
+	qr, q1, q2 = scenarios_Q(site, ECQ)
+	hr, h1, h2 = scenarios_H(site, lon, lat, ECH, noFFinterp)
+
+	FR = hr.valid().to_frame('Level m')
+	FR['Flow m3s'] = qr
+
+	F1 = h1.valid().to_frame('Level m')
+	F1['Flow m3s'] = q1
+
+	F2 = h2.valid().to_frame('Level m')
+	F2['Flow m3s'] = q2
+
+	return FR, F1, F2
+
 def NBS_delta():
 	"""Return the climate change NBS delta on a monthly basis."""
 
@@ -79,45 +209,11 @@ def NBS_delta():
 
 	return r, f
 
-def scenarios_Sorel():
-	"""Return DataFrames for the reference, what-if scenario 1 and 2."""
-	out = {}
-
-	# Q
-	q0 = FFio.total_flow('srl', 'bc')
-	q1 = FFio.total_flow('srl', 'wd')
-	q1 = extend_WI1(q0,q1)
-
-	qbc, q2 = scenario_2()
-
-	# H
-	s = '02OJ033'
-	M = HYDATio.get_station_meta(s)
-	lat, lon = M['LATITUDE'], M['LONGITUDE']
-
-	l0 = FFio.level_series_QH('srl', 'bc')
-	l1 = FFio.level_series_QH('srl', 'wd')
-	l1 = extend_WI1(l0,l1)
-
-	#ECL = interpolate_EC_levels(lon, lat)
-	ECL = [ 3.09323328,  3.49145638,  4.1352682 ,  4.74138233,  5.49859576,
-		6.38552684,  7.10856182,  8.12003153]
-
-	lbc = pd.Series(weight_EC_levels(ECL, get_EC_scenario_index(qbc)), qbc.index)
-	l2 =  pd.Series(weight_EC_levels(ECL, get_EC_scenario_index(q2)), q2.index)
-
-	Fbc = lbc.valid().to_frame('Level m')
-	Fbc['Flow m3s'] = qbc
-
-	F1 = l1.valid().to_frame('Level m')
-	F1['Flow m3s'] = q1
-
-	F2 = l2.valid().to_frame('Level m')
-	F2['Flow m3s'] = q2
-
-	return Fbc, F1, F2
-
-
+def translate(ts, ECL):
+	"""Compute weights and apply them to translate a series at Sorel somewhere
+	else."""
+	wi = get_EC_scenario_index(ts)
+	return pd.Series(weight_EC_levels(ECL, wi), ts.index)
 
 def extend_WI1(ref, fut, type='+'):
 
@@ -159,40 +255,6 @@ def scale_delta(delta, date, y1=1977, y2=2055, ym=2025, type='+'):
 
 	return sf
 
-
-def scenario_1(site):
-	bc = FFio.total_flow(site, 'bc')
-	wd = FFio.total_flow(site, 'wd')
-
-	s1 = extend_WI1(bc, wd)
-	return bc.reindex(bc.index.truncate(after=1991)), s1.reindex(s1.index.truncate(after=2070))
-
-
-def scenario_2():
-
-	# NBS delta
-	r, f = NBS_delta()
-	delta = f - r
-
-	# Sorel base series
-	ts = ECio.Q_Sorel('qtm')
-
-	# Compute annual cycle
-	an = ts.groupby(level=1).mean()
-
-	# Scale the climate change factor in mm³/s with respect to the amplitude.
-	# Translate by two weeks the signal
-	x = np.linspace(0,11, 48)
-	cc = np.interp(x, range(12), delta/r.ptp()) * an.ptp()
-	cc = np.roll(cc, 2)
-
-	bc = ts.reindex(ts.index.truncate(1953,2012)) #57
-	#bc = ts.ix[1962:1991]; #78
-
-	s2 = apply_delta(shift_mi(bc, 57), cc)
-
-	return bc, s2
-
 def shift_mi(ts, a):
 	out = ts[:]
 
@@ -201,7 +263,6 @@ def shift_mi(ts, a):
 
 	out.index.set_levels([l0, l1], True)
 	return out
-
 
 def apply_delta(ts, delta, y0=1975, y1=2055):
 	y = np.array(ts.index.get_level_values(0))
@@ -316,12 +377,6 @@ def print_tables():
 				row_f.append( q[s.lower()][g][1][0] )
 			W.writerow(row_f)
 
-
-
-
-
-
-
 def model_average(x):
 	"""Given a NestedDict, find the level at which the simulations are stored
 	by alias then replace the individual simulation values by a mean over
@@ -369,25 +424,6 @@ def quantile_means(x, n=10):
 
 	assert sum(count)==s
 	return np.array(out)
-
-
-
-def get_StLawrence_stations():
-	import sqlite3
-	path = HYDATio.HYDAT
-	with sqlite3.connect(path) as conn:
-		cur = conn.cursor()
-		cmd = """SELECT STATION_NUMBER, STATION_NAME from "stations" WHERE STATION_NUMBER IN (
-		SELECT  STATION_NUMBER FROM "stations" WHERE "STATION_NAME" LIKE "%FLEUVE%"
-		INTERSECT
-		SELECT STATION_NUMBER FROM "stn_data_range" WHERE RECORD_LENGTH>10  AND DATA_TYPE=?);
-		"""
-		rows = cur.execute(cmd, ('H',))
-		return list(rows)
-
-
-
-
 
 def get_tesselation(domain):
 	"""Return the model tesselation in native coordinates.
@@ -466,7 +502,6 @@ def save_convex_hulls():
 	with open('../analysis/qhulls.json', 'w') as f:
 		json.dump(qhull, f)
 
-
 def get_domain(lon, lat):
 	"""Return the domain holding the coordinates."""
 	import json
@@ -485,7 +520,6 @@ def get_domain(lon, lat):
 			return key
 
 	raise ValueError("Point not in any domain")
-
 
 def interpolate_EC_levels(lon, lat, scens=None, allow_interpolation=False):
 	"""Return the eight levels interpolated from the grid data.
@@ -598,37 +632,6 @@ def interpolate_ff_levels(lon, lat, scen='bc', L=None, noFFinterpolation=False):
 	except ValueError:
 		dom = None
 
-	# 1. Fan & Fay linear interpolation
-	# ---------------------------------
-
-	# 1.1 Get the upstream and downstream stations from point
-	P = ECio.MTM8()
-	x, y = P(lon, lat)
-
-	dist = []
-	for c in CP['coords']:
-		xc, yc = P(*c)
-		dist.append( np.hypot(x-xc, y-yc) )
-
-	dist = np.array(dist)
-	si = np.argsort(dist)[:2]
-
-	upstream = CP['sites'][si.min()]
-	downstream = CP['sites'][si.max()]
-	#print( upstream, downstream )
-
-	# 1.2 Compute the weights to apply to upstream and downstream levels
-	Iw = dist[si.max()] / np.sum(dist[si])
-
-	# 1.3 Compute the upstream and downstream levels from the F&F relations
-	upL = FFio.level_series_QH(upstream, scen)
-	dnL = FFio.level_series_QH(downstream, scen)
-
-	# 1.4 Interpolate at the chosen location based on the distance to the control points
-	FF_L = Iw * upL + (1-Iw) * dnL
-
-	# 2. Correct for non-linear levels
-	# --------------------------------
 
 	# 2.1 Compute streamflow at Sorel
 	FS = FFio.get_flow_sorel(scen)
@@ -642,8 +645,57 @@ def interpolate_ff_levels(lon, lat, scen='bc', L=None, noFFinterpolation=False):
 	L = L or interpolate_EC_levels(lon, lat)
 
 	if (dom in ['lsl', None]) or noFFinterpolation: #Because no reference level on the left side of the domain.
+		print ('lsl')
 		return pd.Series(weight_EC_levels(L, wi), FS.index)
 
+
+	# 1. Fan & Fay linear interpolation
+	# ---------------------------------
+
+	# 1.1 Get the upstream and downstream stations from point
+	P = ECio.MTM8()
+	x, y = P(lon, lat)
+
+	distj = []
+	for c in CP['coords']:
+		xc, yc = P(*c)
+		distj.append(x-xc + 1j*(y-yc) )
+
+	distj = np.array(distj)
+	angles = np.angle(distj, True)
+	dist = np.abs(distj)
+
+	# Initial algorithm (buggy)
+	si = np.argsort(np.abs(dist))[:2]
+	up2 = CP['sites'][si.min()]
+	dw2 = CP['sites'][si.max()]
+
+	ui = np.nonzero( (np.abs(angles)<90 ))[0]
+	di = np.nonzero( (np.abs(angles)>90 ))[0]
+
+	for i in np.argsort(dist):
+		if i in ui:
+			upstream = CP['sites'][i]
+			break
+	for j in np.argsort(dist):
+		if j in di:
+			downstream = CP['sites'][j]
+			break
+	if (upstream != up2) or (downstream != dw2):
+		print( upstream, downstream, '<-', up2, dw2 )
+
+	# 1.2 Compute the weights to apply to upstream and downstream levels
+	Iw = dist[j] / np.sum(dist[[j,i]])
+
+	# 1.3 Compute the upstream and downstream levels from the F&F relations
+	upL = FFio.level_series_QH(upstream, scen)
+	dnL = FFio.level_series_QH(downstream, scen)
+
+	# 1.4 Interpolate at the chosen location based on the distance to the control points
+	FF_L = Iw * upL + (1-Iw) * dnL
+
+	# 2. Correct for non-linear levels
+	# --------------------------------
 	# 2.4 Get the levels at the upstream and downstream control points for all 8 scenarios and interpolate at the point of interest
 	EC_L = Iw * np.array(EC_scen_L[upstream]) + (1-Iw) * np.array(EC_scen_L[downstream])
 
@@ -655,7 +707,7 @@ def interpolate_ff_levels(lon, lat, scen='bc', L=None, noFFinterpolation=False):
 
 def get_EC_scenario_index(flow):
 	"""Return a value indicating where with respect to the 8 scenarios the flow
-	value stand.
+	value stand. The flow is at Sorel.
 	"""
 	refQ = EC_scen_Q['Sorel']
 	wi = np.interp(flow, refQ, range(1,9))
@@ -717,10 +769,6 @@ def check_usines_usees_in_domain():
 				val['dom'] = None
 
 	return sites
-
-
-
-
 
 def checkPointeClaire():
 	def degmin2dec(d,m,c):

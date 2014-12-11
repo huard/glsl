@@ -1,7 +1,7 @@
 """
 All IO related to the HYDAT dataset
 """
-HYDAT = '../data/Hydat_20140113.db'
+HYDAT = '../data/Hydat_20141017.db'
 
 import sqlite3
 import numpy as np
@@ -71,3 +71,16 @@ def get_hydat(sid, var='Q'):
 
         S = pd.concat(series).sort_index()#.resample('D')
         return S.convert_objects(convert_numeric=True)
+
+def get_StLawrence_stations():
+    import sqlite3
+    path = HYDAT
+    with sqlite3.connect(path) as conn:
+        cur = conn.cursor()
+        cmd = """SELECT STATION_NUMBER, STATION_NAME from "stations" WHERE STATION_NUMBER IN (
+        SELECT  STATION_NUMBER FROM "stations" WHERE "STATION_NAME" LIKE "%VARENNES%"
+        INTERSECT
+        SELECT STATION_NUMBER FROM "stn_data_range" WHERE RECORD_LENGTH>10  AND DATA_TYPE=?);
+        """
+        rows = cur.execute(cmd, ('H',))
+        return list(rows)
