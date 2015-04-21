@@ -25,6 +25,40 @@ def fitfunction(q, l):
     c = optimize.fmin(lambda C: np.sum((C[0] * q ** C[1] - l)**2), [1,1])
     return lambda x: c[0]*x**c[1]
 
+def nodays(leap=False):
+    """Return the number of days in each QoM."""
+    if leap:
+        mdays = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    else:
+        mdays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+
+    n = {28: [7,7,7,7],
+         29: [7,7,7,8],
+         30: [8, 7, 8, 7],
+         31: [8, 7, 8, 8]}
+
+    ndays = []
+    for m in mdays:
+        ndays.extend(n[m])
+    return ndays
+
+def qomdays(dti):
+    """Return the number of days per QoM for the index.
+
+    Parameters
+    ----------
+    dti : DateTimeIndex
+      Datetime values.
+    """
+    import calendar
+
+    nd = {True: nodays(True), False: nodays(False)}
+
+    out = []
+    for yv,qi in zip(dti.get_level_values(0), dti.labels[1]):
+        out.append(nd[calendar.isleap(yv)][qi])
+
+    return np.array(out)
 
 
 def _quartermonth_bounds(leap=False):
@@ -34,21 +68,8 @@ def _quartermonth_bounds(leap=False):
     -----
     Rules taken from Fan & Fay (2002).
     """
-    if leap:
-        mdays = [0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    else:
-        mdays = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-
-    limits = {28: [1, 8, 15, 22],
-              30: [1,9,16,24],}
-    limits[29] = limits[28]
-    limits[31] = limits[30]
-
-    qom = [0]
-    for i in range(1,13):
-        qom.extend((np.array(limits[mdays[i]]) + np.sum(mdays[:i])).tolist())
-
-    return np.array(qom[1:], int)
+    d = [1,] + nodays(leap)
+    return  np.cumsum(d)[:-1]
 
 def quartermonth_index(dti):
     """Return the year and quarter month index.
@@ -60,13 +81,16 @@ def quartermonth_index(dti):
     """
     import calendar
 
-    leap = [calendar.isleap(y) for y in dti.year]
+    leap = np.array([calendar.isleap(y) for y in dti.year])
 
     i = _quartermonth_bounds(False)
     li = _quartermonth_bounds(True)
 
-    qom = np.digitize(dti.dayofyear, i)
-    qom[leap] = np.digitize(dti.dayofyear[leap], li)
+    qom = np.empty(len(dti))
+    if leap.any():
+        qom[leap] = np.digitize(dti.dayofyear[leap], li)
+    if (~leap).any():
+        qom[~leap] = np.digitize(dti.dayofyear[~leap], i)
 
     return qom
 
@@ -100,15 +124,20 @@ def select_and_shift(ts, before, after, offset=0):
 
 def qom2date(date, offset=0):
     """Convert a MultiIndex (year, qom) into date object."""
+    import calendar
 
-    qm = _quartermonth_bounds()
+    qm = {}
+    qm[True] = _quartermonth_bounds(leap=True)
+    qm[False] = _quartermonth_bounds(leap=False)
 
     out = []
     for i, d in enumerate(date):
         if type(d) == tuple:
             y, q = d
-            out.append( dt.date(y+offset, 1, 1) + dt.timedelta(days=int(qm[q-1])-1) )
+            leap = calendar.isleap(y)
+            out.append( dt.date(y+offset, 1, 1) + dt.timedelta(days=int(qm[leap][q-1])-1) )
         else:
+            raise "hein?"
             if hasattr(date, 'index'):
                 out.append( dt.date(date.index[i]+offset, 6, 1))
             else:

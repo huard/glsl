@@ -44,7 +44,7 @@ cobs= '#2b2929'
 class QOMFormatter(Formatter):
 	def __init__(self, seq):
 		self.seq = seq
-  
+
 	def __call__(self, x, pos=None):
 		if pos is None or pos >= len(self.seq):
 			return ''
@@ -59,7 +59,7 @@ oqs = GLSLutils.ordinal_qom
 
 def oq(y,m):
 	return GLSLutils.qom2date([(y,m)])[0].toordinal()
-		
+
 def strip(ax):
 	ax.spines['left'].set_visible(False)
 	ax.spines['right'].set_visible(False)
@@ -136,7 +136,7 @@ def example_interpolation_niveaux():
 	plt.savefig('../figs/exemple_interpolation_niveaux.png')
 
 	ax.legend(fontsize='small', frameon=False, loc='upper left', numpoints=1)
-	plt.savefig('../figs/exemple_interpolation_niveaux.png')
+	plt.savefig('../figs/exemple_interpolation_niveaux.png', dpi=300)
 	return fig
 
 def showcase_scenarios(var='H'):
@@ -183,7 +183,7 @@ def showcase_scenarios(var='H'):
 
 
 
-def zcmap(ts, vmin=-.5, ax=None):
+def zcmap(ts, vmin=-.5, ax=None, cb=True):
 	from matplotlib import colors
 
 	if ax is None:
@@ -193,9 +193,9 @@ def zcmap(ts, vmin=-.5, ax=None):
 	x = p.values[0].T * 100
 
 	gh = plt.get_cmap('gist_heat')
-	cm = colors.ListedColormap([gh(i) for i in np.linspace(.05, .8, 5)])
+	cm = colors.ListedColormap([gh(i) for i in np.linspace(.05, .8, 6)])
 	cm.set_over('white')
-	PM = ax.pcolormesh(p.major_axis.values, p.minor_axis.values, x, cmap=cm, vmin=vmin*100, vmax=0)
+	PM = ax.pcolormesh(p.major_axis.values, p.minor_axis.values, x, cmap=cm, vmin=vmin*100, vmax=10)
 
 	ax.invert_yaxis()
 	ax.autoscale(tight=True)
@@ -212,25 +212,33 @@ def zcmap(ts, vmin=-.5, ax=None):
 	ax.set_yticklabels([l[0].upper() for l in months], minor=True)
 	ax.grid(axis='y', ls='-', alpha=.3, lw=.5)
 
-	cb = plt.colorbar(PM, ax=ax, extend='max', shrink=.8)
-	cb.set_ticks(np.linspace(-50, 0, 6))
-	cb.set_label("Niveau [cm]")
-	ax.text(.98, .98, "Occurrence de niveaux\nsous le zéro des cartes", transform=ax.transAxes, ha='right', va='top')
-	fig.tight_layout()
+	if cb:
+		cb = plt.colorbar(PM, ax=ax, extend='max', shrink=.8)
+		cb.set_ticks(np.linspace(-50, 10, 7))
+		cb.set_label("Niveau [cm]")
 
-	return fig, ax
+	return ax
+
 
 def souszero_figs(s, zc, name=''):
 	meta = HYDATio.get_station_meta(s)
 	lon, lat = meta['LONGITUDE'], meta['LATITUDE']
 	EC = analysis.interpolate_EC_levels(lon, lat).tolist()
 	scens = analysis.scenarios_H(lat=lat, lon=lon, EC=EC)
+	fig, axes = plt.subplots(1,3, figsize=(14,6), facecolor='w')
 
+	i = 0
 	for ts, tag in zip(scens, ["REF", "WI1", "WI2"]):
-		fig, ax = zcmap(ts - zc)
-		ax.text(1.01, 1, name, transform=ax.transAxes, size='x-large', color='#272727', alpha=.7, weight='bold', va='top', ha='left')
-		fig.savefig('../deliverables/Tourisme/Souszero_{0}_{1}.png'.format(tag, name))
-		plt.close()
+		ax = zcmap(ts - zc, ax=axes[i], cb=i > 1)
+
+		i += 1
+
+	axes[0].text(.98, .9, "Occurrence de niveaux\nsous le 10 cm du \nzéro des cartes", transform=axes[0].transAxes, ha='right', va='top')
+	axes[0].text(.98, .98, name, transform=axes[0].transAxes, size='x-large', color='#272727', alpha=.7, weight='bold', va='top', ha='right')
+	fig.tight_layout()
+	fig.savefig('../deliverables/Tourisme/Souszero_{0}.png'.format(name))
+	plt.close()
+
 
 
 def tourisme():
@@ -240,40 +248,39 @@ def tourisme():
 	"""
 
 	args = [('02OA039', 20.351, 'Pointe-Claire'),
-			('02OC016', 3.443, 'Lac St-Pierre')]
+			('02OC016', 3.443, 'Lac St-Pierre'),
+			('02OJ033', 3.8, 'Sorel')]
 
 	pts = {}
 	for arg in args:
 		s, zc, name = arg
 		meta = HYDATio.get_station_meta(s)
 		pts[name] = meta['LONGITUDE'], meta['LATITUDE']
+		souszero_figs(s, zc, name)
 
 	fig, ax = plot_depth_map(4, pts, var='level')
 	fig.savefig('../deliverables/Tourisme/Carte.png')
 	plt.close()
 
-	#souszero_figs(s='02OJ033', zc=3.8, 'Sorel')
+
 
 def explain_extension(site):
 	from mpl_toolkits.axes_grid1.inset_locator import mark_inset
 
-	
-
-
 	ref = FFio.total_flow(site, 'bc')
 	fut = FFio.total_flow(site, 'wd')
 
-	s1 = GLSLutils.select_and_shift(ref, before=1974, after=1988, offset=36)
+	s1 = GLSLutils.select_and_shift(ref, before=1979, after=1988, offset=36)
 	s2 = GLSLutils.select_and_shift(fut, before=2049, after=2063, offset=-24)
 
 	s = analysis.extend_WI1(ref, fut)
-	s = s.reindex(s.index.truncate(after=2070))
+	s = s.reindex(s.index.truncate(after=2065))
 
 	fig, axes = plt.subplots(3, 1, figsize=(8,8))
 	fig.subplots_adjust(bottom=.05, top=.97, right=.97)
 
 	bc = ref.ix[:1990]
-	wd = fut.ix[:2069]
+	wd = fut.ix[:2065]
 
 	a=.6
 
@@ -284,13 +291,13 @@ def explain_extension(site):
 
 
 	axes[1].plot_date(oqs(bc), bc.values, '-', color=cbc, lw=1.5)
-	axes[1].plot_date(oqs(bc.ix[1974:1988]), bc.ix[1974:1988].values, '-', color='#868585', lw=1.5)
+	axes[1].plot_date(oqs(bc.ix[1979:1988]), bc.ix[1979:1988].values, '-', color='#868585', lw=1.5)
 	axes[1].plot_date(oqs(wd), wd.values, '-', color=cs1, lw=1.5)
 	axes[1].plot_date(oqs(wd.ix[2049:2063]), wd.ix[2049:2063].values, '-', color='#669ac5', lw=1.5)
 	axes[1].plot_date(oqs(s1), s1.values, '-', color='#868585', lw=1.5, alpha=a)[0]
 	axes[1].plot_date(oqs(s2), s2.values, '-', color='#669ac5', lw=1.5, alpha=a)
 
-	axes[1].annotate("", [oq(2011, 1), s1.ix[2011].max()], [oq(1986, 1), bc.ix[1986].max()], \
+	axes[1].annotate("", [oq(2015, 1), s1.ix[2015].max()], [oq(1986, 1), bc.ix[1986].max()], \
 		xycoords='data', textcoords='data',
 		arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=-0.5",))
 
@@ -298,13 +305,13 @@ def explain_extension(site):
 		xycoords='data', textcoords='data',
 		arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=0.5",))
 	axes[1].set_ylabel("Débit [m³/s]")
-	axes[1].text(.12, .2, '1974-1988', transform=axes[1].transAxes)
+	axes[1].text(.12, .2, '1979-1988', transform=axes[1].transAxes)
 	axes[1].text(.82, .15, '2049-2063', transform=axes[1].transAxes)
 
-	axes[1].text(.46, .85, '2010-2024', transform=axes[1].transAxes)
+	axes[1].text(.46, .85, '2015-2024', transform=axes[1].transAxes)
 	axes[1].text(.59, .78, '2025-2049', transform=axes[1].transAxes)
 
-	sz = s.ix[2010:2039]
+	sz = s.ix[2015:2039]
 	axes[2].plot_date(oqs(s1), s1.values, '-', color='#868585', lw=1.5, alpha=a)[0]
 	axes[2].plot_date(oqs(s2), s2.values, '-', color='#669ac5', lw=1.5, alpha=a)
 	axes[2].plot_date(oqs(sz), sz.values, '-', color=cs1, lw=1.5)
@@ -323,16 +330,24 @@ def explain_extension(site):
 
 def hydro():
 	ECQ = np.array( analysis.EC_scen_Q['Beauharnois'] ) + np.array( analysis.EC_scen_Q['lesCedres'] )
-	
-	fig, ax = full_flow('ont', ECQ)
+
+	fig, ax = full_flow(None, EC=ECQ)
 	fig.savefig("../deliverables/Hydroelectricite/Scenarios_LacOntario.png")
 	plt.close()
-	
+
+
+def lsp():
+	fig, ax = full_flow('lsp', analysis.EC_scen_Q['Trois-Rivieres'])
+	fig.savefig("../deliverables/Ecosystemes/Scenarios_LSP.png")
+	plt.close()
+
+
 def sorel():
 	fig, ax = full_flow('srl', analysis.EC_scen_Q['Sorel'])
 	fig.savefig("../figs/Scenarios_Sorel.png")
+	fig.savefig("../deliverables/Foncier/Scenarios_Sorel.png")
 	plt.close()
-	
+
 def full_flow(site, EC):
 	"""Montrer les scenarios de debits, avec la s/rie complete en haut et les scenarios 1 et 2 en bas."""
 	from mpl_toolkits.axes_grid1.inset_locator import mark_inset
@@ -342,15 +357,15 @@ def full_flow(site, EC):
 
 	oqs = GLSLutils.ordinal_qom
 
-	
+
 	qR, q1, q2  = analysis.scenarios_Q(site, EC)
 
 	fig = plt.figure(figsize=(8,6))
 	fig.subplots_adjust(wspace=.15)
 	ax = plt.subplot2grid((2,2), (0,0), colspan=2)
 	ax.plot_date(oqs(qR), qR.values, '-', color=cbc, label="Scénario de référence")
-	ax.plot_date(oqs(q1), q1.values, '-', color=cs1, label="Scénario WI1")
-	ax.plot_date(oqs(q2), q2.values, '-', color=cs2, label="Scénario WI2")
+	ax.plot_date(oqs(q1), q1.values, '-', color=cs1, label="Scénario 1")
+	ax.plot_date(oqs(q2), q2.values, '-', color=cs2, label="Scénario 2")
 	ax.set_ylabel("Débit [m³/s]")
 	ax.legend(loc='lower center', frameon=False, fontsize='small', bbox_to_anchor=(.5, .98), ncol=3)
 
@@ -358,14 +373,14 @@ def full_flow(site, EC):
 	ax1.plot_date(oqs(q1), q1.values, '-', color=cs1)
 	ax1.set_ylabel("Débit [m³/s]")
 	ax1.set_xticks([oq(y, 1) for y in range(2010, 2071,10)])
-	ax1.text(.02, .9, "WI1", size="large", weight='bold', transform=ax1.transAxes)
+	ax1.text(.02, .97, "#1 Chaud et sec\n 2015-2065", size="large", weight='bold', va='top', transform=ax1.transAxes)
 
 
 	ax2 = plt.subplot2grid((2,2), (1,1), sharey=ax, sharex=ax1)
 	ax2.plot_date(oqs(q2), q2.values, '-', color=cs2)
-	ax2.text(.02, .9, "WI2", size="large", weight='bold', transform=ax2.transAxes)
+	ax2.text(.02, .97, "#2 Cycle saisonnier amplifié\n 2015-2065", size="large", weight='bold', va='top', transform=ax2.transAxes)
 
-	ax1.set_xlim(oq(2010,1), oq(2070,1))
+	ax1.set_xlim(oq(2014,1), oq(2066,12))
 	mark_inset(ax, ax1, loc1=2, loc2=3, fc="gray", ec='none', alpha=.1 )
 	mark_inset(ax, ax2, loc1=3, loc2=4, fc="gray", ec='none', alpha=.1 )
 
@@ -378,14 +393,15 @@ def full_flow(site, EC):
 def transport(i):
 	"""Comparer les séries observées à la jetée #1 avec les scénarios."""
 	import HYDATio
+	zc = 5.56
 
 	# Observations - 0 des cartes
-	Hd = HYDATio.get_hydat('02OA046', 'H') - 5.56 # Daily
+	Hd = HYDATio.get_hydat('02OA046', 'H') - zc # Daily
 	H = GLSLutils.group_qom(Hd).mean()
 
 	# Scénario REF
 	ECL = analysis.EC_scen_L['mtl']
-	tsr = analysis.scenario_HR(EC=ECL) - 5.56
+	tsr = analysis.scenario_HR(EC=ECL) - zc
 
 
 	if i==1:
@@ -488,9 +504,96 @@ def scenarios(data):
 
 	return fig
 
+def graph_dispersion():
+	"""Plot the dispersion graph for the relation between flow and levels."""
+	# Observations at Pointe-Claire
+	s = '02OA039'
+
+	M = HYDATio.get_station_meta(s)
+	lat, lon = M['LATITUDE'], M['LONGITUDE']
+	ECL = analysis.interpolate_EC_levels(lon, lat)
+
+	Q = analysis.EC_scen_Q['Sorel']
+
+	fig, ax = plt.subplots(1,1, figsize=(6.5,4))
+	fig.subplots_adjust(bottom=.15)
+	ax.plot(Q, ECL, '-', marker='o', color='k', mfc='w', lw=2, mew=2)
+
+	Hd = HYDATio.get_hydat(s, 'H')
+	H = GLSLutils.group_qom(Hd).mean()
+	H.index.names = ('Year', 'QTM')
+
+	tsr = analysis.scenario_QR()
+
+	tsr, H = tsr.align(H, 'inner', axis=0)
+	ax.plot(tsr, H, '.', color="orange", alpha=.1, ms=2)
+
+	ax.set_xlabel("Débit reconstitué à Sorel [m³/s]")
+	ax.set_ylabel("Niveau à Pointe-Claire [m]")
+	return fig, ax
+#
+def compare_MOWAT():
+	from scipy.stats import gaussian_kde as kde
+	import itertools
+
+	fig, axes = plt.subplots(1,6,figsize=(6.5, 4), sharey=True, facecolor='w')
+	fig.subplots_adjust(top=.85)
+
+	# Scenarios from the MOWAT center
+	mowat = analysis.MOWAT()
+
+
+	# Lake Ontario outflow
+	ECQ = np.array( analysis.EC_scen_Q['Beauharnois'] ) + np.array( analysis.EC_scen_Q['lesCedres'] )
+	our, ou1, ou2 = analysis.scenarios_Q(EC=ECQ)
+
+
+	ts = (our.ix[1980:2010], ou1, ou2) + mowat
+
+	vmin = min(map(min, ts))
+	vmax = max(map(max, ts))
+
+	q = np.linspace(vmin, vmax, 200)
+
+	titles = itertools.cycle(['Référence\n1980-2010', "Scénario 1\nChaud & Sec", "Scénario 2\nAmplification", "Référence\n1900-1989", "Scénario 1\nCCCma 2030", "Scénario 2\nCCCma 2050"])
+	dx=.05
+	for ax in axes[3:]:
+		bb = ax.get_position()
+		ax.set_position([bb.x0+dx, bb.y0, bb.width, bb.height])
+
+
+	for ax, x in zip(axes, ts):
+		K = kde(x.values)
+
+		ax.plot(K(q), q, '-', color='k', lw=1.5)
+
+		ax.spines['bottom'].set_visible(False)
+		ax.spines['top'].set_visible(False)
+		ax.spines['right'].set_visible(False)
+
+		ax.set_xticks([])
+		ax.yaxis.tick_left()
+		ax.set_title(titles.__next__(), size='small')
+
+	axes[0].set_ylabel("Débit à la sortie du lac Ontario [m³/s]")
+	axes[2].set_xlabel("Fréquence d'occurrence")
+
+
+	axes[1].text(.5, 1.14, "Ouranos", transform=axes[1].transAxes, weight='bold', ha='center')
+	axes[4].text(.5, 1.14, "MOWAT", transform=axes[4].transAxes, weight='bold', ha='center')
+
+	fig.savefig('../figs/comparaison_mowat_ouranos.png', dpi=300)
+	return fig, axes
 
 
 
+
+
+
+
+
+
+#
 def graph_flow_level(flow, level):
 	fig, ax = plt.subplots(figsize=(8,6))
 
@@ -619,25 +722,25 @@ def NBS_cycle_full(stat=np.mean):
 def scenario_2():
 	from mpl_toolkits.axes_grid1.inset_locator import mark_inset
 	from matplotlib.dates import YearLocator, MonthLocator, WeekdayLocator, DateFormatter
-	
-	
-	
+
+
+
 	bc = analysis.scenario_QR()
 	s2 = analysis.scenario_Q2()
 
 	fig = plt.figure(figsize=(10,4.5))
 	fig.subplots_adjust(left=.1, right=.9, wspace=.15)
-	
+
 	ax = plt.subplot2grid((1,3), (0,0), colspan=2)
-	
+
 	axt = plt.twiny()
 
 
 	Lbc = axt.plot_date(oqs(bc), bc.values, '-', color=cbc, lw=.6, alpha=.9,  label='Débits reconstitués à Sorel (1953–2012)')[0]
 
 	# Scenario 2
-	Ls2 = ax.plot_date(oqs(s2), s2.values, '-', color=cs2, lw=1., label='Débits scénario #2 (2010–2069)')[0]
-
+	Ls2 = ax.plot_date(oqs(s2), s2.values, '-', color=cs2, lw=1., label='Débits scénario #2 (2015–2065)')[0]
+	ax.set_xlim(oq(2010,1), oq(2069,48))
 	ax.set_ylabel('Débit à Sorel [m³/s]')
 
 	ax.legend((Lbc, Ls2), (Lbc.get_label(), Ls2.get_label()), loc='upper right', frameon=False, fontsize='small')
@@ -649,25 +752,25 @@ def scenario_2():
 
 	axz = plt.subplot2grid((1,3), (0,2))
 	axzt = plt.twiny(axz)
-	
+
 	y = 2007
 	axzt.plot_date(oqs(bc.ix[y:y+1]), bc.ix[y:y+1].values,  '-', color=cbc, lw=1.5, alpha=.9,)
 	axz.plot_date(oqs(s2.ix[y+57:y+58]), s2.ix[y+57:y+58].values,  '-', color=cs2, lw=1.5, alpha=.9,)
 	mark_inset(ax, axz, loc1=1, loc2=4, fc="gray", ec='gray', alpha=.2 )
 	axz.xaxis.set_major_locator(YearLocator())
 	axz.xaxis.set_minor_locator(MonthLocator(interval=2))
-	
+
 	axzt.xaxis.set_major_locator(YearLocator())
 	axzt.xaxis.set_minor_locator(MonthLocator(interval=2))
 	axz.yaxis.tick_right()
 	#axz.set_ylabel('Débit à Sorel [m³/s]')
 	axz.annotate('Amplification\ndes minima', xy=(oq(2064, 38), 6700), xytext=(30, 5),\
-	  ha='left', 
+	  ha='left',
 	 xycoords='data', textcoords='offset points', \
 	 arrowprops=dict(arrowstyle="->",  connectionstyle="arc3,rad=-.4", color='gray'))
 	fig.tight_layout()
-	
-	
+
+
 	fig.savefig('../figs/scenario2.png')
 	return fig
 
@@ -724,7 +827,7 @@ def foncier():
 			C = ax.tricontour(T, d, [0,], colors=[col[i],], label=str(i))
 
 	leg = ax.legend(loc='upper right', frameon=False, title='Scénario EC')
-	
+
 	ax.set_aspect('equal')
 	ax.set_xticks([])
 	ax.set_yticks([])
@@ -771,16 +874,16 @@ def compare_bases_cases_for_Laura():
 
 
 def do_synthesis():
-	s = analysis.scenarios_Q('srl', analysis.EC_scen_Q['Sorel'])
+	s = analysis.scenarios_H('srl')
 	fig, ax = synthesis_scenarios(*s)
 	fig.savefig('../rapport/figs/synthese_scenarios.png', bbox_inches='tight', dpi=300)
 	plt.close()
 #
 def synthesis_scenarios(R, S1, S2):
 	var = 'Level m'
-	r = R[var].ix[1960:1989]
-	s1 = S1[var]
-	s2 = S2[var].ix[2040:2069]
+	r = R.ix[1980:2010]
+	s1 = S1.ix[2040:2065]
+	s2 = S2.ix[2040:2065]
 
 	rac = r.groupby(level=1).mean()
 	s1ac = s1.groupby(level=1).mean()
@@ -790,9 +893,9 @@ def synthesis_scenarios(R, S1, S2):
 
 	fig, ax = plt.subplots(1,1, figsize=(6.75, 4))
 	lw = 2
-	ax.plot(x, rac, '-', color=cbc, lw=lw, label="Référence")
-	ax.plot(x, s1ac, '-', color=cs1, lw=lw, label="Scénario #1")
-	ax.plot(x, s2ac, '-', color=cs2, lw=lw, label="Scénario #2")
+	ax.plot(x, rac, '-', color=cbc, lw=lw, label="Référence (1980-2010)")
+	ax.plot(x, s1ac, '-', color=cs1, lw=lw, label="Scénario #1 (2040-2065)")
+	ax.plot(x, s2ac, '-', color=cs2, lw=lw, label="Scénario #2 (2040-2065)")
 
 	if 1:
 		rq = r.groupby(level=1).quantile([.1, .9])
@@ -920,7 +1023,7 @@ def plot_FF_flow(site):
 	strip(ax)
 
 	#ax2 = plt.twiny(ax)
-	#ax2.spines["bottom"].set_position(("axes", -.1))	
+	#ax2.spines["bottom"].set_position(("axes", -.1))
 	#make_patch_spines_invisible(ax2)
 	#ax2.spines["bottom"].set_visible(True)
 
@@ -956,25 +1059,25 @@ def plot_FF_flow(site):
 def plot_station_qom_levels(sid):
 	"""Graphic of the mean QOM level time series."""
 	ts = GLSLio.get_hydat(sid, 'H')
-	
+
 	# Average at the QOM scale
 	gr = GLSLio.group_qom(ts)
 	ts = gr.mean()
-	
-	
+
+
 	fig, ax = plt.subplots(1, 1, figsize=(10, 4))
 	fig.subplots_adjust(bottom=.1, right=.95, left=.1)
 	ts.plot(ax=ax, color=c, lw=1.5)
 	ts.plot(style='o', ax=ax, ms=5, mec=c, mfc='w', mew=1)
-	
+
 	ax.grid(ls='-', lw=.1, color='#777777')
 	ax.grid(axis='x')
-	
+
 	ax.set_ylabel("Niveau [m]")
-	
-	
+
+
 	ax.set_xlim(0, len(ts))
-	
+
 	years = ts.index.levels[0]
 	if len(years) > 20:
 		xt = []; t = []
@@ -1345,12 +1448,13 @@ def plot_depth_map(scen, pts={}, inset=False, ax=None, var='depth'):
 
 	X, Y, Z = pts
 	D = np.ma.masked_less_equal(D, 0)
+	ps = 4
 	if var == 'depth':
-		S = ax.scatter(X, Y, c=D, s=1, linewidths=0, transform=AR + ax.transData, cmap=cm, vmax=45, vmin=1e-2, norm=mpl.colors.LogNorm())
+		S = ax.scatter(X, Y, c=D, s=ps, linewidths=0, transform=AR + ax.transData, cmap=cm, vmax=45, vmin=1e-2, norm=mpl.colors.LogNorm())
 	if var == 'level':
-		S = ax.scatter(X, Y, c=D+Z, s=1, linewidths=0, transform=AR + ax.transData, cmap=cm, vmax=45, vmin=1e-2, norm=mpl.colors.LogNorm())
+		S = ax.scatter(X, Y, c=D+Z, s=ps, linewidths=0, transform=AR + ax.transData, cmap=cm, vmax=30, vmin=20)#, norm=mpl.colors.LogNorm())
 	elif var == 'speed':
-		S = ax.scatter(X, Y, c=D, s=1, linewidths=0, transform=AR + ax.transData, cmap=cm, vmin=0, vmax=2)
+		S = ax.scatter(X, Y, c=D, s=ps, linewidths=0, transform=AR + ax.transData, cmap=cm, vmin=0, vmax=2)
 
 
 

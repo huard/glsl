@@ -333,34 +333,84 @@ def TOURISME():
 
 	return out
 
+def TOURISME2():
+	"""
+	1. pour les 4 endroits suivants (peu importe où dans la zone)
+	a. Lac St-François
+	b. Lac St-Louis
+	c. Montréal-Boucherville-Contrecoeur
+	d. Sorel-Lac St-Pierre
+
+	2. Sur la période retenue 2015-2065
+	Le nombre de jours par année/mois sur la période de navigation de plaisance avril-novembre où l'on peut s'attendre à 
+	a) -10cm
+	b) -20cm à 29cm
+	c) -30cm à -39cm
+	d) > que -40cm
+
+	"""
+	from collections import OrderedDict
+
+	args = [('02OA039', 20.351, 'Pointe-Claire'),
+			('02OC016', 3.443, 'Lac St-Pierre'),
+			('02OJ033', 3.8, 'Sorel')]
+
+	for arg in args:
+		s, zc, name = arg
+		meta = HYDATio.get_station_meta(s)
+
+		lon, lat = meta['LONGITUDE'], meta['LATITUDE']
+		EC = analysis.interpolate_EC_levels(lon, lat).tolist()
+		scens = analysis.scenarios_H(lat=lat, lon=lon, EC=EC)
+
+		fn = '../deliverables/Tourisme/Scenarios_niveaux_jours_{0}.xlsx'.format(name)
+		EW = pd.ExcelWriter(fn)
+
+		for scen, s in zip(("REF", "WI1", "WI2"), scens):
+			s -= zc
+
+			data = OrderedDict()
+			data['<-40'] = s < -.40
+			data['[-40, -30['] = (s>=-.40) & (s<-.30)
+			data['[-30, -20]'] = (s>=-.30) & (s<-.20)
+			data['[-20, -10]'] = (s>=-.20) & (s<-.10)
+			data['[-10, 0]'] = (s>=-.10) & (s<0)
+			data['[0, 10]'] = (s>=0) & (s<.10)
+
+			df = pd.DataFrame(data=data)
+			ndays = GLSLutils.qomdays(df.index)
+			df = df.apply(lambda x: x * ndays)
+			df.reset_index(inplace=True)
+			df['Month'] = (df['QTM']-1)//4 + 1
+			df.drop('QTM', axis=1, inplace=True)
+			df = df.query('Month >=4 & Month <=11')
+			out = df.groupby(['Year', 'Month'], as_index=True).sum()
+
+			out.to_excel(EW, scen)
+
+		EW.close()
+
+
+
+
 def TRANSPORT():
 	"""Niveaux a la jetee #1.
 
 	Relation 0 des cartes IGLD85: 5.560
 	"""
 	zc = 5.56
+	ECL = analysis.EC_scen_L['mtl']
 
 	out = {}
 
-	# What-if scenario #1
-	bc = FFio.level_series_QH('mtl', 'bc')
-	wd = FFio.level_series_QH('mtl', 'wd')
-	out['WI1'] = analysis.extend_WI1(bc, wd) - zc
-
-	# What-if scenario #2 at Sorel -> to Mtl
-	ECL = analysis.EC_scen_L['mtl']
-	for scen, ts in zip(("REF", "WI2"), analysis.scenario_2()):
-
-		# Scenario weights
-		wi = analysis.get_EC_scenario_index(ts)
-
-		out[scen] = pd.Series(analysis.weight_EC_levels(ECL, wi), ts.index) - zc
+	out['REF'], out['WI1'], out['WI2'] = analysis.scenarios_H('mtl', EC=ECL)
 
 	# Series
 	fn = '../deliverables/Transport/Scenarios_series_niveaux_Jetee_1_mtl.xlsx'
 	EW = pd.ExcelWriter(fn)
 
 	for i, scen in enumerate(['REF', 'WI1', 'WI2']):
+		out[scen] = out[scen] - zc
 		out[scen].to_frame('Level m').to_excel(EW, scen)
 	EW.close()
 
@@ -378,20 +428,12 @@ def TRANSPORT():
 		F.to_panel().to_excel(EW, scen)
 		EW.close()
 
-
-
-
-
-
-
-
 	return out
-
 
 
 def FONCIER():
 	"""Niveaux au Lac St-Louis (Pointe-Claire)"""
-	fn = '../deliverables/Scenarios_niveaux_Pointe-Claire_02OA039.xlsx'
+	fn = '../deliverables/Foncier/Scenarios_niveaux_Pointe-Claire_02OA039.xlsx'
 	EW = pd.ExcelWriter(fn)
 	out = {}
 
@@ -400,6 +442,7 @@ def FONCIER():
 
 	M = HYDATio.get_station_meta(s)
 	lat, lon = M['LATITUDE'], M['LONGITUDE']
+	ECL = analysis.interpolate_EC_levels(lon, lat)
 
 	if 0: #OBS
 		L = HYDATio.get_hydat(s, 'H')
@@ -408,23 +451,19 @@ def FONCIER():
 		F = LQ.to_frame('Level m')
 		out['obs'] = F
 
-	# What-if scenario #1
-	wd = FFio.PCL('wd')
-	out['WI1'] = wd.reindex(wd.index.truncate(after=2069))
+	EW = pd.ExcelWriter(fn)
 
-	# What-if scenario #2 at Sorel
-	ECL = analysis.interpolate_EC_levels(lon, lat)
-	for scen, ts in zip(("REF", "WI2"), analysis.scenario_2()):
+	scens = analysis.scenarios_H(site='pcl', EC=ECL)
+	k = "Level m"
+	for scen, ts in zip(["REF", "WI1", "WI2"], scens):
+		ts.to_frame(k).to_excel(EW, scen)
 
-		# Scenario weights
-		wi = analysis.get_EC_scenario_index(ts)
+	#	qbc.to_frame("REF + m3s").to_excel(EW, 'REF')#
+	#wd.to_frame("WI1 + m3s").to_excel(EW, 'WI1')
+	#q2.to_frame("WI2 + m3s").to_excel(EW, 'WI2')
 
-		# Compute level at Pointe-Claire
-		out[scen] = pd.Series(analysis.weight_EC_levels(ECL, wi), ts.index)
-
-	for i, scen in enumerate(['REF', 'WI1', 'WI2']):
-		out[scen].to_frame(scen + ' m').to_excel(EW, scen)
 	EW.close()
+
 
 	return out
 
@@ -461,23 +500,62 @@ def FONCIER2():
 
 			sink.writerecords(features)
 
+def FONCIER2xls():
+	from matplotlib import pyplot as plt
+	import shapely
+	from openpyxl import Workbook
+
+	wb = Workbook()
+	reg = 'lsl'
+	T = analysis.get_tesselation(reg, option='B')
+
+	features = []
+	for i in range(8):
+		ws = wb.create_sheet(index=i, title='S'+str(i+1))
+		d = ECio.EC_depth(reg, i+1)
+		C = plt.tricontour(T, d, [0,])
+		lc = C.collections[0] # line collection
+		seg = np.vstack( lc.get_segments() )
+		plt.close()
+		ws.append(['X', 'Y'])
+		for row in seg.tolist():
+			ws.append(row)
+
+
+	wb.save('../deliverables/Foncier/GLSL_contour.xlsx')
+
 def FONCIER3():
 
 	fn = '../deliverables/Foncier/Scenarios_debits_Sorel.xlsx'
 	EW = pd.ExcelWriter(fn)
 
-	scens = analysis.scenarios_Sorel()
+	scens = analysis.scenarios_Q(site='srl')
 	k = "Flow m3s"
 	for scen, ts in zip(["REF", "WI1", "WI2"], scens):
-		ts[k].to_frame(k).to_excel(EW, scen)
-
-#	qbc.to_frame("REF + m3s").to_excel(EW, 'REF')#
-	#wd.to_frame("WI1 + m3s").to_excel(EW, 'WI1')
-	#q2.to_frame("WI2 + m3s").to_excel(EW, 'WI2')
+		ts.to_frame(k).to_excel(EW, scen)
 
 	EW.close()
 
+def FONCIER4():
 
+	fn = '../deliverables/Foncier/Scenarios_debits_Sorel.xlsx'
+	EW = pd.ExcelWriter(fn)
+
+	scens = analysis.scenarios_Q(site='srl')
+	k = "Flow m3s"
+	for scen, ts in zip(["REF", "WI1", "WI2"], scens):
+		#ts.groupby(lambda x: (x[0], np.floor((x[1]-1)/4))).mean()
+		mm = pd.rolling_mean(ts, 4)[3::4]
+		mi = pd.MultiIndex.from_tuples([(y,int(m/4)) for (y,m) in mm.index.values], names=('Year', 'Month'))
+		mts = pd.TimeSeries(mm.values, index=mi)
+
+		df = mts.to_frame(k)
+		wi = analysis.get_EC_scenario_index(mts)
+		df['Poids'] = pd.TimeSeries(wi, index=mi)
+		df['Index'] = pd.TimeSeries(np.around(wi), index=mi)
+		df.to_excel(EW, scen)
+
+	EW.close()
 
 def HYDRO():
 	"""Scénario de débit pour Beauharnois et Les Cedres."""
@@ -489,13 +567,12 @@ def HYDRO():
 
 	ECQ = np.array( analysis.EC_scen_Q['Beauharnois'] ) + np.array( analysis.EC_scen_Q['lesCedres'] )
 
-	res = analysis.scenarios_Q('ont', ECQ)
+	res = analysis.scenarios_Q(EC=ECQ)
 
 	for i, scen in enumerate(['REF', 'WI1', 'WI2']):
 		res[i].to_frame('Flow m3s').to_excel(EW, scen)
 	EW.close()
 	return res
-
 #
 def plot_ww_wd_scenarios():
 	fig, ax = graphs.plot_FF_flow('ont')

@@ -259,7 +259,7 @@ def level_series_QH(site, scen='bc'):
 
     Parameters
     ----------
-    site : {'mtl', 'var', 'srl', 'lsl', 'lsp', 'trois'}
+    site : {'mtl', 'var', 'srl', 'pcl', 'lsp', 'trois'}
       Name of control point.
 
     scen : {'bc', 'wd', 'ww'}
@@ -267,18 +267,22 @@ def level_series_QH(site, scen='bc'):
 
     """
     qs = 'stl', 'dpmi', 'rich', 'fran', 'mau'
-    y0 = offset[scen]
-    Q = pd.DataFrame([FF_flow(q, scen, y0) for q in qs])
 
-    K = FF_K(site, scen, y0)
-    T = FF_tidal(scen, y0)
+    if site == 'pcl':
+        return PCL(scen)
+    else:
+        y0 = offset[scen]
+        Q = pd.DataFrame([FF_flow(q, scen, y0) for q in qs])
 
-    # Add one year to the K and T records (Q also misses one year... shit)
-    #K = pd.concat([K, GLSLutils.select_and_shift(K, slice(y0+1,y0+2), 29)])
-    #T = pd.concat([T, GLSLutils.select_and_shift(T, slice(y0+1,y0+2), 29)])
+        K = FF_K(site, scen, y0)
+        T = FF_tidal(scen, y0)
 
-    f = stage_func(site)
-    ts = f(K*Q, T)
+        # Add one year to the K and T records (Q also misses one year... shit)
+        #K = pd.concat([K, GLSLutils.select_and_shift(K, slice(y0+1,y0+2), 29)])
+        #T = pd.concat([T, GLSLutils.select_and_shift(T, slice(y0+1,y0+2), 29)])
+
+        f = stage_func(site)
+        ts = f(K*Q, T)
 
     return pd.Series(ts, K.index)
 

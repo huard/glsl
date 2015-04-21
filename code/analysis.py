@@ -18,20 +18,20 @@ WW and WD cases are the base case to which a delta is applied.
 """Variables tirées du rapport de Bouchard et Morin et Miron et al (2003) pour le Lac St-Louis."""
 # Débits des scénarios à Sorel
 EC_scen_Q = {'Sorel':[5000, 6500, 8000, 9500, 12000, 14500, 17500, 20500],
-			 'LaSalle':[4572, 5740, 6997, 8304, 10102, 11396, 13174, 14531],
-			 'MIP':[398, 728, 960, 1142, 1750, 2772, 3824, 5374],
-			 'Assomption':[30,32,43,54,148, 332, 502, 550],
-			 'Richelieu':[137, 148, 240, 326, 615, 898, 1044, 1100],
-			 'Yamaska': [28, 29, 38, 52, 126, 220, 345, 410],
-			 'St-Francois':[120, 128, 139, 155, 330, 572, 850, 980],
-			 'Trois-Rivieres':[5319, 6843, 8469, 10093, 13227, 16517, 20188, 23554],
-			 'Nicolet':[17,19,24,30,76,130,233,380],
-			 'Maskinongé':[7,8,14,16,43,105,119,122],
-			 'duLoup':[10,11,14,14,37,92,97,107],
-			 'Beauharnois': [4345, 5102,5699,6589,7097,7262,7444,7660],
-			 'lesCedres': [190,336,383,427,1464,1751,1815,2401],
-			 'Ch. Ste-Anne-Vaudreuil': [29, 381, 872, 1237, 1488, 2316, 3751, 4270],
-			}
+		 'LaSalle':[4572, 5740, 6997, 8304, 10102, 11396, 13174, 14531],
+		 'MIP':[398, 728, 960, 1142, 1750, 2772, 3824, 5374],
+		 'Assomption':[30,32,43,54,148, 332, 502, 550],
+		 'Richelieu':[137, 148, 240, 326, 615, 898, 1044, 1100],
+		 'Yamaska': [28, 29, 38, 52, 126, 220, 345, 410],
+		 'St-Francois':[120, 128, 139, 155, 330, 572, 850, 980],
+		 'Trois-Rivieres':[5319, 6843, 8469, 10093, 13227, 16517, 20188, 23554],
+		 'Nicolet':[17,19,24,30,76,130,233,380],
+		 'Maskinongé':[7,8,14,16,43,105,119,122],
+		 'duLoup':[10,11,14,14,37,92,97,107],
+		 'Beauharnois': [4345, 5102,5699,6589,7097,7262,7444,7660],
+		 'lesCedres': [190,336,383,427,1464,1751,1815,2401],
+		 'Ch. Ste-Anne-Vaudreuil': [29, 381, 872, 1237, 1488, 2316, 3751, 4270],
+		}
 
 # Niveaux printemps IGLD85
 EC_scen_L = {'mtl': [4.29, 4.95, 5.61, 6.30, 7.19, 7.99, 8.8, 9.82],
@@ -87,7 +87,7 @@ def scenario_Q1(site, EC=None):
 	wd = FFio.total_flow(ns, 'wd')
 	s1 = extend_WI1(bc, wd)
 
-	s1 = s1.reindex(s1.index.truncate(after=2070))
+	s1 = s1.reindex(s1.index.truncate(after=2065))
 
 	if site is None:
 		return translate(s1, EC)
@@ -114,7 +114,7 @@ def scenario_Q2(EC=None):
 	cc = np.interp(x, range(12), delta/r.ptp()) * an.ptp()
 	cc = np.roll(cc, 2)
 
-	bc = ts.reindex(ts.index.truncate(1953,2012)) #57
+	bc = ts.reindex(ts.index.truncate(1958,2008)) #57
 	#bc = ts.ix[1962:1991]; #78
 
 	s2 = apply_delta(shift_mi(bc, 57), cc)
@@ -137,7 +137,7 @@ def scenario_H1(site, lon=None, lat=None, EC=None, noFFinterp=False):
 	"""Return the water level according to the scenario WI1.
 	Values are given for site by default if EC is None."""
 
-	if site in {'mtl', 'var', 'srl', 'lsl', 'lsp', 'trois'}:
+	if site in {'mtl', 'var', 'srl', 'pcl', 'lsp', 'trois'}:
 		bc = FFio.level_series_QH(site, 'bc')
 		wd = FFio.level_series_QH(site, 'wd')
 
@@ -191,7 +191,31 @@ def scenarios_QH(site=None, lon=None, lat=None, ECQ=None, ECH=None, noFFinterp=F
 	F2['Flow m3s'] = q2
 
 	return FR, F1, F2
+#
+def MOWAT():
+	"""
+	Return lake Ontario outflows corresponding to the BOC and the two (2030 and 2050)
+	MOWAT scenarios.
 
+	Notes
+	-----
+	For their analysis of energy generation, the MOWAT center uses scenarios
+	that correspond to -18% and -25% of the Basis of Comparison (BOC) flows for
+	the 2030 and 2050 horizons respectively.
+
+	BOC flows are taken from the International St. Lawrence River Board
+	of Control and obtained here from
+	http://www.glerl.noaa.gov/data/dashboard/data/hydroIO/flows/
+
+	According to the paper "Economic Impacts of Climate Change on the Canadian Great
+	Lakes Hydro–Electric Power Producers: A Supply Analysis", the relative change
+	factors are applied to each monthly values.
+
+	"""
+	mts, ts = GLSLio.OntarioOutflow()
+	mts = mts['1900-01':'1989-12']
+	return mts, mts*.82, mts*.75
+#
 def NBS_delta():
 	"""Return the climate change NBS delta on a monthly basis."""
 
@@ -227,8 +251,8 @@ def extend_WI1(ref, fut, type='+'):
 	else:
 		raise ValueError(type)
 
-	# First segment (2010 - 2024)
-	s1 = GLSLutils.select_and_shift(ref, before=1974, after=1988, offset=36)
+	# First segment (2015 - 2024)
+	s1 = GLSLutils.select_and_shift(ref, before=1979, after=1988, offset=36)
 
 	# Second segment (2025-2039)
 	s2 = GLSLutils.select_and_shift(fut, before=2049, after=2063, offset=-24)
@@ -237,7 +261,7 @@ def extend_WI1(ref, fut, type='+'):
 
 	# Application of scaling factor
 	sf = [scale_delta(delta, date, y1=1977, y2=2055, ym=2025, type=type) for date, val in ext.items()]
-	return pd.concat([ext + sf, fut])
+	return pd.concat([ext + sf, fut.reindex(fut.index.truncate(after=2065))])
 
 def scale_delta(delta, date, y1=1977, y2=2055, ym=2025, type='+'):
 	"""Return the seasonal delta for (year, qom)."""
@@ -248,7 +272,8 @@ def scale_delta(delta, date, y1=1977, y2=2055, ym=2025, type='+'):
 	yr = y1 if y < ym else y2
 
 	if type=='*':
-		sf = d * (1 + (d - 1) * (y - yr)/dy)
+		sf = (1 + (d - 1) * (y - yr)/dy)
+		raise NotImplementedError ("There was a bug here. I think this code segment was never used. Check before using.")
 
 	elif type=='+':
 		sf = d * (y - yr)/ dy
@@ -272,17 +297,17 @@ def apply_delta(ts, delta, y0=1975, y1=2055):
 	cc = delta[q-1] * f
 	return ts + cc
 
-def synthesis_table(R, S1, S2):
+def synthesis_table(R, S1, S2, ann=True, rel=True, var='H'):
 	from docx import Document
 	import locale
 	#locale.setlocale(locale.LC_ALL, 'fr_CA')
 
 	import calendar
 
-	var = 'Level m'
-	r = R[var].ix[1960:1989]
-	s1 = S1[var]
-	s2 = S2[var].ix[2040:2069]
+
+	r = R.ix[1980:2010]
+	s1 = S1.ix[2040:2065]
+	s2 = S2.ix[2040:2065]
 
 	rac = r.groupby(level=1).mean()
 	s1ac = s1.groupby(level=1).mean()
@@ -292,16 +317,29 @@ def synthesis_table(R, S1, S2):
 	s1mm = s1ac.reshape(12,4).mean(1)
 	s2mm = s2ac.reshape(12,4).mean(1)
 
+	if rel:
+		s1mm -= rmm
+		s2mm -= rmm
+
+	fmt = '{' + '0:.{0}f'.format('0' if var=='Q' else 1) +  '}'
+	fmtr = '{' + '0:{0}.{1}f'.format('+' if rel else '', '0' if var=='Q' else 1)  +  '}'
+
 	document = Document()
-	table = document.add_table(rows=4, cols=13)
+	table = document.add_table(rows=4, cols=14 if ann else 13)
 	hdr = table.rows[0].cells
 	for i in range(12):
 		hdr[i+1].text = calendar.month_name[i+1]
-		table.rows[1].cells[i+1].text = '{0:.1f}'.format(rmm[i])
-		table.rows[2].cells[i+1].text = '{0:.1f}'.format(s1mm[i])
-		table.rows[3].cells[i+1].text = '{0:.1f}'.format(s2mm[i])
+		table.rows[1].cells[i+1].text = fmt.format(rmm[i])
+		table.rows[2].cells[i+1].text = fmtr.format(s1mm[i])
+		table.rows[3].cells[i+1].text = fmtr.format(s2mm[i])
+	if ann:
+		i = 12
+		hdr[i+1].text = 'Ann'
+		table.rows[1].cells[i+1].text = fmt.format(rmm.mean())
+		table.rows[2].cells[i+1].text = fmtr.format(s1mm.mean())
+		table.rows[3].cells[i+1].text = fmtr.format(s2mm.mean())
 
-	document.save('demo.docx')
+	document.save('demo_ann{0}.docx'.format('_rel' if rel else ''))
 
 def QM_NBS(n=10):
 	"""Seasonal quantile ratios for NBS, computed by driving GCM.
@@ -425,7 +463,7 @@ def quantile_means(x, n=10):
 	assert sum(count)==s
 	return np.array(out)
 
-def get_tesselation(domain):
+def get_tesselation(domain, option='A'):
 	"""Return the model tesselation in native coordinates.
 
 	Parameters
@@ -448,14 +486,21 @@ def get_tesselation(domain):
 	# I use scipy's code since the current Matplotlib release delaunay implementation is fragile.
 	#D = Delaunay(np.array([x,y]).T)
 	T = tri.Triangulation(x, y)# D.vertices)
-
-	#TODO:  Use circle-ratios instead
 	A = tri.TriAnalyzer(T)
-	ma = A.get_flat_tri_mask(.2)
-	# Masked values
-	#area = _triangle_area(x, y, T.triangles)
 	dist = np.max(np.sqrt(np.diff(x[T.triangles], axis=1)**2 + np.diff(y[T.triangles])**2), axis=1)
-	ma = ma | (dist > 200)
+
+	if option == 'A': # This is what I initially used
+		ma = A.get_flat_tri_mask(.2)
+		# Masked values
+		#area = _triangle_area(x, y, T.triangles)
+		ma = ma | (dist > 200)
+
+	elif option == 'B':
+		cr = A.circle_ratios()
+		ma = (cr < .01) | (dist > 400)
+		for i in range(6):
+			T.set_mask(ma)
+			ma = A.get_flat_tri_mask(.2)
 
 	T.set_mask(ma)
 

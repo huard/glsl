@@ -150,6 +150,22 @@ def stations_usees_2():
 
 		return out
 #
+def OntarioOutflow():
+	"""Return the monthly and yearly outflows from lake Ontario."""
+
+	import csv
+	fn = '../data/lawrenceFromOntario.csv'
+	arr = np.loadtxt(fn, skiprows=5, delimiter=',')
+	year = arr[:,0].astype(int)
+
+	data = arr[:,1:-1].ravel()
+	avg = arr[:,-1]
+	month = np.arange(len(data))%12 + 1
+
+	mi = pd.period_range(start='{0}-01'.format(year[0]), periods=len(data), freq='M')
+	yi = pd.period_range(start='{0}'.format(year[0]), periods=len(avg), freq='A')
+	return pd.TimeSeries(data, mi), pd.TimeSeries(avg, yi)
+#
 def NBS(freq='annual', stat=np.mean):
 	"""Return a dictionary holding the average NBS in the reference and future
 	periods for each lake and simulation.
