@@ -1347,7 +1347,7 @@ def plot_mesh():
 
 	AR = mtransforms.Affine2D()
 	AR.rotate_deg(-25)
-	pts = np.hstack(GLSLio.EC_pts().values())
+	pts = np.hstack(ECio.EC_pts().values())
 	X, Y, Z = pts
 	S = ax.scatter(X, Y, c=Z, s=.3, linewidths=0, transform=AR + ax.transData, cmap=cm)
 	ax.set_aspect('equal')
@@ -1384,6 +1384,95 @@ def plot_mesh():
 
 	return fig, ax
 
+def test():
+	M = basemap.Basemap(projection = 'omerc',           \
+	                     resolution  = 'l',                   \
+	                    llcrnrlon  = -43.7,   \
+	                    llcrnrlat   = 14.7,    \
+	                    urcrnrlon = -4.0,    \
+	                    urcrnrlat  = 41.9,    \
+	                    lat_2       = 11.0,    \
+	                    lat_1       = 45.5,    \
+	                    lon_2      = -27.8,   \
+	                    lon_1      = -19.9,
+						lon_0 =-43.7,
+						lat_0=14.7,
+						no_rot=True)
+	dl = 200000.
+	nx = int((M.xmax - M.xmin) / dl) + 1
+	ny = int((M.ymax - M.ymin) / dl) + 1
+	lonr, latr,x,y= M.makegrid(nx, ny, returnxy=True)
+	M.drawcoastlines()
+	M.scatter(x.flatten(), y.flatten(),5,marker='o')
+	M.drawparallels(np.arange(10,51,10))
+	M.drawmeridians(np.arange(-50,1,10))
+	M.plot((-19.9, -27.28), (45.5, 11.0), '-', latlon=True)
+
+
+def clean_mesh_over_map(scen, var='depth', ax=None):
+	#m = basemap.Basemap(projection='omerc', resolution='c', lat_0=45.14, lon_0=-73.9, \
+#		lon_2=-72.56, lat_2=45.3, lon_1=-73.67,lat_1=45.55, \
+		#width=370000, height=170000, no_rot=False)
+	if ax is None:
+		fig, ax = plt.subplots(1,1,figsize=(8,4))
+		cbax = fig.add_axes([.1,.9,.45,.04])
+		fig.set_facecolor('w')
+		fig.subplots_adjust(left=.01, right=.99, bottom=.01, top=.99)
+	else:
+		fig = ax.get_figure()
+
+	m = basemap.Basemap(projection='omerc', resolution='f', \
+		llcrnrlon=-73.9, llcrnrlat=45.14,\
+		urcrnrlon=-72.66, urcrnrlat=46.51,\
+		lon_1=-74.44, lat_1=45.3,\
+		lon_2=-72.2, lat_2=46.7,\
+		lat_0=45.14, lon_0=-73.9,\
+		no_rot=True,
+		ax=ax
+		)
+	CL = m.drawcoastlines(color=np.array([33,33,33,160])/256.)
+	#ST = m.drawstates(color='gray')
+	R = m.drawrivers(linewidth=2, color=np.array([178,208,254,128])/256)
+	#plt.setp(CL, alpha=.5)
+
+	crt = np.array([73,97,132])/256
+
+
+
+	proj = ECio.MTM8()
+
+	cm = haxby
+	cm = plt.cm.gist_ncar_r
+	#cm = plt.cm.spectral
+
+	X, Y, Z = np.hstack(ECio.EC_pts().values())
+	x, y = m(*proj(X,Y, inverse=True))
+
+
+	D = np.hstack(ECio.EC_depth(scen=scen, var=var if var!='level' else 'depth').values())
+
+	D = np.ma.masked_less_equal(D, 0)
+	ps = 4
+	S = m.scatter(x, y, c=D, s=ps, linewidths=0, cmap=cm, vmax=20, vmin=1e-2,)# norm=mpl.colors.LogNorm())
+
+	ax.set_autoscale_on(False)
+	ax.set_axis_off()
+
+	cb = plt.colorbar(S, cax=cbax, extend='max', orientation='horizontal')
+	if var == 'depth':
+		cb.set_label('Profondeur [m]')
+		cb.set_label('Depth [m]')
+	if var == 'level':
+		cb.set_label('Niveau [m]')
+	elif var == 'speed':
+		cb.set_label('Vitesse [m/s]')
+
+	ax.text(*m(-73.65, 45.52), s="Montreal", ha='center')
+	ax.text(*m(-74.1, 45.52), s="Outaouais", ha='left', color=crt)
+	ax.text(*m(-72.7, 46.05), s="St-François", ha='left', color=crt)
+	ax.text(*m(-73.13, 45.8), s="Richelieu", ha='left', color=crt)
+
+	return m
 
 def plot_depth_map(scen, pts={}, inset=False, ax=None, var='depth'):
 	"""
